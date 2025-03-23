@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  Full-featured LMS Assistant
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
