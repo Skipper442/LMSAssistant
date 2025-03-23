@@ -1,17 +1,19 @@
 // ==UserScript==
-// @name         LMS Assistant PRO
+// @name         LMS Assistant PRO (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.2
-// @description  Full-featured LMS Assistant
+// @author       Liam Moss and Jack Tyson
+// @version      1.5
+// @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
 // @grant        none
 // ==/UserScript==
+
 (function () {
     'use strict';
 
-/*** ============ Ініціалізація модулів ============ ***/
+
 const MODULES = {
     lmsAssistant: true,
     ibvButton: true,
@@ -32,10 +34,7 @@ const MODULE_LABELS = {
     notifications: 'Notifications Sound BETA'
 };
 
-/**
- *  Додай сюди описи (підказки) для кожного модуля.
- *  Якщо якогось не додаси, буде "LMS module".
- */
+
 const MODULE_DESCRIPTIONS = {
     lmsAssistant: "Highlights states, manages call hours",
   ibvButton: "Adds a CRP button in LMS",
@@ -46,18 +45,18 @@ const MODULE_DESCRIPTIONS = {
   notifications: "Enables sound and notifications for the tab"
 };
 
-// Завантажити стан модулів із localStorage
+
 Object.keys(MODULES).forEach(key => {
     const saved = localStorage.getItem(`lms_module_${key}`);
     if (saved !== null) MODULES[key] = JSON.parse(saved);
 });
 
-/*** ============ Функція вставки панелі в TopMenu ============ ***/
+
 function injectTopMenuPanel() {
     const helpMenuItem = document.getElementById("TopMenu-menuItem006");
     if (!helpMenuItem) return;
 
-    // 1. Створюємо пункт меню "LMS Assistant PRO"
+    // 1. Creating a menu item "LMS Assistant PRO"
     const newMenuItem = document.createElement('td');
     newMenuItem.id = "TopMenu-menuItemLMS";
     newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO&nbsp;';
@@ -73,7 +72,7 @@ function injectTopMenuPanel() {
         textTransform: 'uppercase'
     });
 
-    // 2. Створюємо сам dropdown
+    // 2. Creating dropdown
     const dropdown = document.createElement('div');
     dropdown.id = 'lmsDropdownMenu';
     dropdown.style.display = 'none';
@@ -90,11 +89,10 @@ function injectTopMenuPanel() {
     dropdown.style.backgroundRepeat = 'repeat-x';
     dropdown.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
     dropdown.style.border = 'none';
-    // dropdown.style.borderRadius = '4px'; // якщо потрібні закруглені кути
     dropdown.style.zIndex = '9999';
     dropdown.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.3)';
 
-    // 3. Додаємо стилі для слайдерів (як було раніше)
+    
     const style = document.createElement('style');
     style.textContent = `
 .lms-switch {
@@ -134,7 +132,7 @@ function injectTopMenuPanel() {
 `;
     document.head.appendChild(style);
 
-    // 4. Створюємо пункти (модулі) у меню
+    
     Object.keys(MODULES).forEach(key => {
         const wrapper = document.createElement('div');
         Object.assign(wrapper.style, {
@@ -158,16 +156,16 @@ function injectTopMenuPanel() {
             transition: 'all 0.2s ease'
         });
 
-        // Контейнер для назви модуля + іконки "info"
+        
         const nameContainer = document.createElement('div');
         nameContainer.style.display = 'flex';
         nameContainer.style.alignItems = 'center';
 
-        // Назва модуля
+        // Module names
         const moduleName = document.createElement('span');
         moduleName.textContent = MODULE_LABELS[key];
 
-        // Іконка info (якщо ти додав MODULE_DESCRIPTIONS)
+        // Info icon (for MODULE_DESCRIPTIONS)
         const helpIcon = document.createElement('img');
         helpIcon.src = 'https://cdn-icons-png.flaticon.com/512/108/108153.png';
         helpIcon.alt = 'Info';
@@ -176,13 +174,12 @@ function injectTopMenuPanel() {
         helpIcon.style.marginLeft = '5px';
         helpIcon.style.cursor = 'help';
         helpIcon.title = MODULE_DESCRIPTIONS[key] || 'LMS Module';
-        // За замовчуванням біла:
         helpIcon.style.filter = 'invert(1)';
 
         nameContainer.appendChild(moduleName);
         nameContainer.appendChild(helpIcon);
 
-        // Hover ефект (на весь wrapper)
+        // Hover (wrapper)
         wrapper.addEventListener('mouseover', () => {
             wrapper.style.backgroundColor = 'rgb(175, 209, 255)';
             wrapper.style.color = 'black';
@@ -191,7 +188,6 @@ function injectTopMenuPanel() {
             newMenuItem.style.color = 'black';
             newMenuItem.style.textShadow = '1px 1px white';
 
-            // Іконка чорна
             helpIcon.style.filter = 'none';
         });
         wrapper.addEventListener('mouseout', () => {
@@ -202,11 +198,9 @@ function injectTopMenuPanel() {
             newMenuItem.style.color = 'white';
             newMenuItem.style.textShadow = '1px 1px black';
 
-            // Іконка знову біла
             helpIcon.style.filter = 'invert(1)';
         });
 
-        // === Слайдер (toggle)
         const toggle = document.createElement('label');
         toggle.className = 'lms-switch';
 
@@ -225,14 +219,12 @@ function injectTopMenuPanel() {
         toggle.appendChild(input);
         toggle.appendChild(slider);
 
-        // Додаємо nameContainer (з назвою) + toggle
         wrapper.appendChild(nameContainer);
         wrapper.appendChild(toggle);
 
         dropdown.appendChild(wrapper);
     });
 
-    // 5. Створюємо пункт "New Ideas / Bug Report"
     const ideasWrapper = document.createElement('div');
     Object.assign(ideasWrapper.style, {
         boxSizing: 'border-box',
@@ -255,7 +247,6 @@ function injectTopMenuPanel() {
     });
     ideasWrapper.textContent = 'New Ideas / Bug Report';
 
-    // Hover-ефект, як у інших пунктів
     ideasWrapper.addEventListener('mouseover', () => {
         ideasWrapper.style.backgroundColor = 'rgb(175, 209, 255)';
         ideasWrapper.style.color = 'black';
@@ -273,18 +264,18 @@ function injectTopMenuPanel() {
         newMenuItem.style.textShadow = '1px 1px black';
     });
 
-    // При натисканні → відкриває Google Form (вкажи свій URL)
+    // Google Form (URL)
     ideasWrapper.addEventListener('click', () => {
-        window.open('https://docs.google.com/forms/d/ВАШ_ФОРМ_ID', '_blank');
+        window.open('https://forms.gle/esmUuaVD9oxCh7mz7');
     });
 
     dropdown.appendChild(ideasWrapper);
 
-    // 6. Додаємо dropdown і пункт меню у DOM
+    
     document.body.appendChild(dropdown);
     helpMenuItem.parentNode.appendChild(newMenuItem);
 
-    // Hover для LMS Assistant PRO (пункту верхнього меню)
+    // Hover for LMS Assistant PRO (header menu)
     newMenuItem.addEventListener('mouseover', () => {
         dropdown.style.display = 'block';
         newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
@@ -305,7 +296,7 @@ function injectTopMenuPanel() {
         newMenuItem.style.textShadow = '1px 1px black';
     });
 
-    // Позиція під меню
+   
     const positionDropdown = () => {
         const rect = newMenuItem.getBoundingClientRect();
         dropdown.style.left = `${rect.left}px`;
@@ -321,7 +312,7 @@ injectTopMenuPanel();
 
 
 
-    /*** ============ LMS Assistant (дзвінки, штати) ============ ***/
+    /*** ============ LMS Assistant ============ ***/
     if (MODULES.lmsAssistant) {
         const callHours = { start: '07:00:00', end: '20:00:00' };
         const tzData = {
@@ -368,7 +359,7 @@ injectTopMenuPanel();
             }, 1000);
         }
 
-        // LoansReport (підсвічування штатів)
+    
         if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
             const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
             leads.forEach(row => {
@@ -379,7 +370,9 @@ injectTopMenuPanel();
             });
         }
     }
+        
     /*** ============ IBV Button Injector ============ ***/
+    
     if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
         const getLoginName = (id) => {
             return fetch(`https://apply.creditcube.com/plm.net/customers/reports/YodleeReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`)
@@ -418,6 +411,7 @@ injectTopMenuPanel();
     }
 
     /*** ============ Email Category Filter ============ ***/
+    
     if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         const categories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
         const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
@@ -491,6 +485,7 @@ injectTopMenuPanel();
     }
 
     /*** ============ Toggle All Remarks ============ ***/
+    
     if (MODULES.toggleRemarks && location.href.includes('LoanRemarks.aspx')) {
         let allChecked = false;
 
@@ -532,6 +527,7 @@ injectTopMenuPanel();
         addToggleButton();
     }
     /*** ============ Copy/Paste LMS ============ ***/
+    
     if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
         setTimeout(() => {
             const fields = [
@@ -568,6 +564,7 @@ injectTopMenuPanel();
     }
 
     /*** ============ QC LMS Search Assistant ============ ***/
+    
     if (MODULES.qcSearch && location.href.includes('CustomersReport')) {
     const getElement = (selector) => document.querySelector(selector);
     const getElements = (selector) => document.querySelectorAll(selector);
@@ -605,7 +602,7 @@ injectTopMenuPanel();
         btn.textContent = 'Clear';
         btn.type = 'button';
 
-        // Повністю стилізована кнопка у стилі LMS
+        // Buttons style (LMS like)
        Object.assign(btn.style, {
     marginLeft: '5px',
     padding: '2px 6px',
@@ -633,6 +630,7 @@ injectTopMenuPanel();
     const element = getElement('#maincontent_Td_CityHeader');
     if (element) element.textContent = 'Quick Search';
 }
+        
 /*** ============ Notifications module ============ ***/
 
     if (MODULES.notifications) {
@@ -732,14 +730,14 @@ const PRIMARY_TAB_KEY = "primaryLock";
         observer.observe(notificationElement, { childList: true, subtree: true, characterData: true });
     }
 
-    // Запит дозволу на нотифікації (якщо не надано)
+    
     if (Notification.permission !== "granted") {
         Notification.requestPermission();
     }
 
-    // Запуск спостереження
+    
     observeNotifications();
-    setInterval(checkNotifications, 10000); // safety fallback
-    // -------------------- КІНЕЦЬ КОДУ --------------------
+    setInterval(checkNotifications, 10000); 
+    
 }
 })();
