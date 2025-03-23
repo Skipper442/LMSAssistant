@@ -4,8 +4,8 @@
 // @version      1.0
 // @description  Full-featured LMS Assistant
 // @match        https://apply.creditcube.com/*
-// @updateURL    https://raw.githubusercontent.com/Skipper442/LMSAssistant/refs/heads/main/LMSAssistant
-// @downloadURL  https://raw.githubusercontent.com/Skipper442/LMSAssistant/refs/heads/main/LMSAssistant
+// @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
+// @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
 // @grant        none
 // ==/UserScript==
 (function () {
