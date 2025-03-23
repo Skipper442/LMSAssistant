@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         LMSAssistant.user.js
+// @name         LMS Assistant PRO
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @description  Full-featured LMS Assistant
