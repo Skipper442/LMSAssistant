@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.6
+// @version      1.7
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -51,6 +51,15 @@ Object.keys(MODULES).forEach(key => {
     if (saved !== null) MODULES[key] = JSON.parse(saved);
 });
 
+function findHelpMenuItem() {
+    const menuCells = document.querySelectorAll('#TopMenu td');
+    for (const cell of menuCells) {
+        if (cell.textContent.trim().toUpperCase() === 'HELP') {
+            return cell;
+        }
+    }
+    return null;
+}
 
 function injectTopMenuPanel() {
     // Використовуємо функцію пошуку
