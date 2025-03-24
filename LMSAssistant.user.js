@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.93
+// @version      1.94
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -12,7 +12,6 @@
 
 (function () {
     'use strict';
-
 
 const MODULES = {
     lmsAssistant: true,
@@ -64,16 +63,15 @@ function findHelpMenuItem() {
 }
 
 function injectTopMenuPanel() {
-    // Використовуємо функцію пошуку
+    
     const helpMenuItem = findHelpMenuItem();
     if (!helpMenuItem) {
-        // Якщо не знайдено "HELP", то, можливо, у користувача взагалі інше меню
-        // Можеш або повернути, або вставити свій пункт у кінець як fallback
+        
         console.warn('HELP menu item not found — cannot insert LMS Assistant PRO');
         return;
     }
 
-    // Створюємо наш пункт меню "LMS Assistant PRO"
+    
     const newMenuItem = document.createElement('td');
     newMenuItem.id = "TopMenu-menuItemLMS";
     newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO&nbsp;';
@@ -109,7 +107,7 @@ helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
     dropdown.style.zIndex = '9999';
     dropdown.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.3)';
 
-    
+
     const style = document.createElement('style');
     style.textContent = `
 .lms-switch {
@@ -149,7 +147,7 @@ helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
 `;
     document.head.appendChild(style);
 
-    
+
     Object.keys(MODULES).forEach(key => {
         const wrapper = document.createElement('div');
         Object.assign(wrapper.style, {
@@ -173,7 +171,7 @@ helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
             transition: 'all 0.2s ease'
         });
 
-        
+
         const nameContainer = document.createElement('div');
         nameContainer.style.display = 'flex';
         nameContainer.style.alignItems = 'center';
@@ -288,7 +286,7 @@ helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
 
     dropdown.appendChild(ideasWrapper);
 
-    
+
     document.body.appendChild(dropdown);
     helpMenuItem.parentNode.appendChild(newMenuItem);
 
@@ -313,7 +311,7 @@ helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
         newMenuItem.style.textShadow = '1px 1px black';
     });
 
-   
+
     const positionDropdown = () => {
         const rect = newMenuItem.getBoundingClientRect();
         dropdown.style.left = `${rect.left}px`;
@@ -376,7 +374,7 @@ injectTopMenuPanel();
             }, 1000);
         }
 
-    
+
         if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
             const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
             leads.forEach(row => {
@@ -387,9 +385,9 @@ injectTopMenuPanel();
             });
         }
     }
-        
+
     /*** ============ IBV Button Injector ============ ***/
-    
+
     if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
         const getLoginName = (id) => {
             return fetch(`https://apply.creditcube.com/plm.net/customers/reports/YodleeReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`)
@@ -428,7 +426,7 @@ injectTopMenuPanel();
     }
 
     /*** ============ Email Category Filter ============ ***/
-    
+
     if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         const categories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
         const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
@@ -502,7 +500,7 @@ injectTopMenuPanel();
     }
 
     /*** ============ Toggle All Remarks ============ ***/
-    
+
     if (MODULES.toggleRemarks && location.href.includes('LoanRemarks.aspx')) {
         let allChecked = false;
 
@@ -544,44 +542,78 @@ injectTopMenuPanel();
         addToggleButton();
     }
     /*** ============ Copy/Paste LMS ============ ***/
-    
-    if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
-        setTimeout(() => {
-            const fields = [
-                { id: 'ctl00_Span_CellPhone' },
-                { id: 'ctl00_Span_HomePhone' },
-                { id: 'ctl00_Span_Email' }
-            ];
 
-            fields.forEach(({ id }) => {
-                const container = document.getElementById(id);
-                if (!container) return;
+if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
 
-                const btn = document.createElement('button');
-                btn.textContent = "Copy";
-                btn.type = "button";
-                btn.className = "copyBtn";
-                Object.assign(btn.style, {
-                    fontWeight: '500',
-                    fontSize: 'smaller',
-                    padding: "2px 4px",
-                    marginLeft: "5px",
-                    cursor: 'pointer'
-                });
-
-                btn.onclick = () => {
-                    const text = container?.textContent.trim();
-                    if (!text) return;
-                    navigator.clipboard.writeText(text);
-                };
-
-                container.appendChild(btn);
-            });
-        }, 1000);
+    function isUSPhoneNumber(str) {
+        var regex = /^\(?(\d{3})\)?[- .]?(\d{3})[- .]?(\d{4})$/;
+        return regex.test(str);
     }
 
+    function displayUSPhoneNumbers() {
+        var text = document.body.innerText;
+
+        var matches = text.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g);
+        if (!matches) {
+            alert("No phone numbers found on this page.");
+            return;
+        }
+
+        var usPhoneNumbers = matches.filter(isUSPhoneNumber);
+
+        if (usPhoneNumbers.length === 0) {
+            alert("No US phone numbers found on this page.");
+        } else if (usPhoneNumbers.length === 1) {
+            // Якщо знайдено рівно 1 номер
+            var phoneNumber = "211" + usPhoneNumbers[0];
+            navigator.clipboard.writeText(phoneNumber)
+              .then(() => {
+                console.log("Copied: " + phoneNumber);
+              })
+              .catch(err => console.error("Failed to copy:", err));
+
+        } else {
+            // Якщо знайдено 2 і більше номерів
+            var phoneNumber2 = "211" + usPhoneNumbers[1];
+            navigator.clipboard.writeText(phoneNumber2)
+              .then(() => {
+                console.log("Copied: " + phoneNumber2);
+              })
+              .catch(err => console.error("Failed to copy:", err));
+        }
+    }
+
+    // Функція створення кнопки
+    function createCopyButton() {
+        var button = document.createElement("button");
+        button.innerHTML = "Copy Cell Number";
+        Object.assign(button.style, {
+            position: "fixed",
+            bottom: "20px",
+            right: "20px",
+            zIndex: "9999",
+            padding: "6px 12px",
+            background: "#2e9fd8",
+            color: "#fff",
+            border: "none",
+            borderRadius: "none",
+            cursor: "pointer",
+            fontWeight: "bold"
+        });
+        button.onclick = function() {
+            displayUSPhoneNumbers();
+        };
+        document.body.appendChild(button);
+    }
+
+    // Додамо кнопку після завантаження
+    window.addEventListener('load', function() {
+        createCopyButton();
+    });
+}
+
     /*** ============ QC LMS Search Assistant ============ ***/
-    
+
     if (MODULES.qcSearch && location.href.includes('CustomersReport')) {
     const getElement = (selector) => document.querySelector(selector);
     const getElements = (selector) => document.querySelectorAll(selector);
@@ -647,7 +679,7 @@ injectTopMenuPanel();
     const element = getElement('#maincontent_Td_CityHeader');
     if (element) element.textContent = 'Quick Search';
 }
-        
+
 /*** ============ Notifications module ============ ***/
 
     if (MODULES.notifications) {
@@ -747,14 +779,14 @@ const PRIMARY_TAB_KEY = "primaryLock";
         observer.observe(notificationElement, { childList: true, subtree: true, characterData: true });
     }
 
-    
+
     if (Notification.permission !== "granted") {
         Notification.requestPermission();
     }
 
-    
+
     observeNotifications();
-    setInterval(checkNotifications, 10000);  
+    setInterval(checkNotifications, 10000);
 }
 /*** ============ Overpaid check module ============ ***/
 
@@ -812,12 +844,11 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
             return ((totalPaid - totalPrincipalLoaned) / totalPrincipalLoaned) * 100;
         };
 
-        // Селектори
+        
         const totalPrincipalLoanedSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(2)';
         const totalPaidSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(4)';
 
-        // Тепер шукаємо статус "Active" чи "Paid in Full"
-        // Перейменуємо другу змінну, щоб не затерти "statusCells"
+        
         const loanStatusCells = document.querySelectorAll('.DataTable.LoansTbl tbody tr td:nth-child(3)');
         let lastEligibleRowIndex = -1;
         loanStatusCells.forEach((statusCell, index) => {
@@ -856,6 +887,5 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
     } else {
         console.log('No clients with eligible statuses found.');
     }
-    // --- КІНЕЦЬ КОДУ ---
 }
 })();
