@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.9
+// @version      1.91
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -21,7 +21,7 @@ const MODULES = {
     toggleRemarks: true,
     copyPaste: true,
     qcSearch: true,
-    notifications: true
+    notifications: true,
     overpaidCheck: true
 };
 
@@ -32,7 +32,7 @@ const MODULE_LABELS = {
     toggleRemarks: 'Toggle All Remarks',
     copyPaste: 'Copy/Paste',
     qcSearch: 'QC Search',
-    notifications: 'Notifications Sound BETA'
+    notifications: 'Notifications Sound BETA',
     overpaidCheck: 'Overpaid Check'
 };
 
