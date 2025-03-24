@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.92
+// @version      1.93
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -546,43 +546,39 @@ injectTopMenuPanel();
     /*** ============ Copy/Paste LMS ============ ***/
     
     if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
-        function displayUSPhoneNumbers() {
-        var text = document.body.innerText;
-        var matches = text.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g); // Regex to find phone numbers
-        if (matches) { var usPhoneNumbers = matches.filter(isUSPhoneNumber); // Filter US phone numbers
-                      if (usPhoneNumbers.length === 0) { alert("No US phone numbers found on this page."); }
-                      else if (usPhoneNumbers.length === 1) {
-                          var phoneNumber = "211" + usPhoneNumbers[0]; // Prepend "211" to the single phone number
-                          GM_setClipboard(phoneNumber);
-                      }
-                      else { // Automatically select the second option
-                          var phoneNumber = "211" + usPhoneNumbers[1]; // Prepend "211" to the second phone number
-                          GM_setClipboard(phoneNumber); }
-                     }
-        else { alert("No phone numbers found on this page."); }
+        setTimeout(() => {
+            const fields = [
+                { id: 'ctl00_Span_CellPhone' },
+                { id: 'ctl00_Span_HomePhone' },
+                { id: 'ctl00_Span_Email' }
+            ];
+
+            fields.forEach(({ id }) => {
+                const container = document.getElementById(id);
+                if (!container) return;
+
+                const btn = document.createElement('button');
+                btn.textContent = "Copy";
+                btn.type = "button";
+                btn.className = "copyBtn";
+                Object.assign(btn.style, {
+                    fontWeight: '500',
+                    fontSize: 'smaller',
+                    padding: "2px 4px",
+                    marginLeft: "5px",
+                    cursor: 'pointer'
+                });
+
+                btn.onclick = () => {
+                    const text = container?.textContent.trim();
+                    if (!text) return;
+                    navigator.clipboard.writeText(text);
+                };
+
+                container.appendChild(btn);
+            });
+        }, 1000);
     }
-    // Function to check if a string is a valid US phone number
-    function isUSPhoneNumber(str) {
-        var regex = /^\(?(\d{3})\)?[- ]?(\d{3})[- ]?(\d{4})$/;
-        return regex.test(str);
-    }
-    // Function to create and append copy button
-    function createCopyButton() {
-        var button = document.createElement("button");
-        button.innerHTML = "Copy Cell Number";
-        button.style.position = "fixed";
-        button.style.bottom = "20px";
-        button.style.right = "20px";
-        button.style.zIndex = "9999";
-        button.onclick = function() {
-            displayUSPhoneNumbers();
-        };
-        document.body.appendChild(button);
-    } // Create copy button when the page is fully loaded
-    window.addEventListener('load', function() {
-        createCopyButton();
-    });
-})();
 
     /*** ============ QC LMS Search Assistant ============ ***/
     
