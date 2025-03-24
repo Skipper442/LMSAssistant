@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.7
+// @version      1.8
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -22,6 +22,7 @@ const MODULES = {
     copyPaste: true,
     qcSearch: true,
     notifications: true
+    overpaidCheck: true
 };
 
 const MODULE_LABELS = {
@@ -32,6 +33,7 @@ const MODULE_LABELS = {
     copyPaste: 'Copy/Paste',
     qcSearch: 'QC Search',
     notifications: 'Notifications Sound BETA'
+    overpaidCheck: 'Overpaid Check'
 };
 
 
@@ -752,7 +754,96 @@ const PRIMARY_TAB_KEY = "primaryLock";
 
     
     observeNotifications();
-    setInterval(checkNotifications, 10000); 
-    
+    setInterval(checkNotifications, 10000);  
 }
+
+if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
+const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
+    // Check if any row has status "Gold", "Platinum", "VIP", or "Diamond"
+    const statusCells = document.querySelectorAll(statusColumnSelector);
+    let eligibleStatusFound = false;
+    statusCells.forEach(statusCell => {
+        const status = statusCell.textContent.trim();
+        const allowedStatuses = ["Gold", "Platinum", "VIP", "Diamond"];
+        if (allowedStatuses.includes(status)) {
+            eligibleStatusFound = true;
+        }
+    });
+    if (eligibleStatusFound) {
+        // Function to extract and parse amount from element text
+        const extractAmount = (element) => {
+            const amount = parseFloat(element.textContent.trim().replace('$', '').replace(',', ''));
+            return amount;
+        };
+        // Function to display the percentage next to the Total Paid amount
+        const displayPercentage = (percentage, payments, status) => {
+            const percentageElement = document.createElement('span');
+            percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
+            percentageElement.classList.add('loan-comparison-tooltip'); // Add a class to the percentage element
+            // Apply color and font weight based on percentage value, number of payments, and status
+            if (percentage > 20) {
+                if (payments < 3 && !status.includes("Paid in Full")) {
+                    percentageElement.style.color = '#de9d1b'; // Use a slightly darker shade of yellow
+                    percentageElement.title = "It looks like the client has not made enough payments on his active loan to be eligible for refinancing"; // Set tooltip text
+                } else if (status.includes("Active") && status.includes("In-House Collections")) {
+                    percentageElement.style.color = 'red'; // Color it red if last active loan is in collections
+                    percentageElement.title = "Last active loan of this customer currently in collection"; // Set tooltip text
+                } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
+                    percentageElement.style.color = 'red'; // Color it red if customer is in collections
+                    percentageElement.title = "It looks like the customer is in collection"; // Set tooltip text
+                } else {
+                    percentageElement.style.color = 'green'; // If percentage is greater than 20% and number of payments is 3 or more, color it green
+                    percentageElement.title = "Even if Max Exposure shows you zero. Ask the team leader maybe there is something he can offer him."; // Set tooltip text
+                }
+                percentageElement.style.fontWeight = '900';
+            } else {
+                percentageElement.style.color = 'red'; // If percentage is 20% or less, color it red
+                percentageElement.style.fontWeight = 'bold'; // Make the text bold
+            }
+            const totalPaidElement = document.querySelector(totalPaidSelector);
+            totalPaidElement.appendChild(percentageElement);
+        };
+        // Calculate the percentage
+        const calculatePercentage = (totalPaid, totalPrincipalLoaned) => {
+            return ((totalPaid - totalPrincipalLoaned) / totalPrincipalLoaned) * 100;
+        };
+        // Selector for total principal loaned and total paid elements
+        const totalPrincipalLoanedSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(2)';
+        const totalPaidSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(4)';
+        // Check if any row has status "Active" or "Paid in Full"
+        const statusCells = document.querySelectorAll('.DataTable.LoansTbl tbody tr td:nth-child(3)');
+        let lastEligibleRowIndex = -1;
+        statusCells.forEach((statusCell, index) => {
+            const status = statusCell.textContent.trim();
+            if (status.includes("Active") || status.includes("Paid in Full")) {
+                lastEligibleRowIndex = index;
+            } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
+                lastEligibleRowIndex = index; // If both statuses found on same line, mark as last eligible row
+            }
+        });
+        if (lastEligibleRowIndex !== -1) {
+            // At least one row with eligible status found, proceed with calculations
+            const totalPrincipalLoanedElement = document.querySelector(totalPrincipalLoanedSelector);
+            const totalPaidElement = document.querySelector(totalPaidSelector);
+            if (totalPrincipalLoanedElement && totalPaidElement) {
+                const totalPrincipalLoaned = extractAmount(totalPrincipalLoanedElement);
+                const totalPaid = extractAmount(totalPaidElement);
+                // Get the last row with eligible status
+                const lastEligibleRow = document.querySelectorAll('.DataTable.LoansTbl tbody tr')[lastEligibleRowIndex];
+                const paymentsElement = lastEligibleRow.querySelector('td:nth-child(11)');
+                const payments = parseInt(paymentsElement.textContent.trim());
+                const status = lastEligibleRow.querySelector('td:nth-child(3)').textContent.trim();
+                const percentage = calculatePercentage(totalPaid, totalPrincipalLoaned);
+                // Display the percentage with appropriate color and tooltip text
+                displayPercentage(percentage, payments, status);
+            } else {
+                console.error('One or more elements not found.');
+            }
+        } else {
+            console.log('No clients with eligible statuses found.');
+        }
+    } else {
+        console.log('No clients with eligible statuses found.');
+    }
+
 })();
