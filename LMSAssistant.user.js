@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.5
+// @version      1.6
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -53,10 +53,16 @@ Object.keys(MODULES).forEach(key => {
 
 
 function injectTopMenuPanel() {
-    const helpMenuItem = document.getElementById("TopMenu-menuItem006");
-    if (!helpMenuItem) return;
+    // Використовуємо функцію пошуку
+    const helpMenuItem = findHelpMenuItem();
+    if (!helpMenuItem) {
+        // Якщо не знайдено "HELP", то, можливо, у користувача взагалі інше меню
+        // Можеш або повернути, або вставити свій пункт у кінець як fallback
+        console.warn('HELP menu item not found — cannot insert LMS Assistant PRO');
+        return;
+    }
 
-    // 1. Creating a menu item "LMS Assistant PRO"
+    // Створюємо наш пункт меню "LMS Assistant PRO"
     const newMenuItem = document.createElement('td');
     newMenuItem.id = "TopMenu-menuItemLMS";
     newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO&nbsp;';
@@ -71,7 +77,7 @@ function injectTopMenuPanel() {
         textShadow: '1px 1px #000',
         textTransform: 'uppercase'
     });
-
+helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
     // 2. Creating dropdown
     const dropdown = document.createElement('div');
     dropdown.id = 'lmsDropdownMenu';
