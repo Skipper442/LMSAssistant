@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.1
+// @version      1.2
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -14,9 +14,12 @@
 (function () {
     'use strict';
 
-   
+    /*** ============ Ініціалізація модулів ============ ***/
+    // Для Sales‑версії: включені тільки наступні модулі. 
+    // Модуль lmsAssistant завжди увімкнений – користувач не може його вимкнути.
     const MODULES = {
-        lmsAssistant: true,
+        lmsAssistant: true, // Обов'язковий, не можна вимикати
+        ibvButton: true,
         emailFilter: true,
         copyPaste: true,
         qcSearch: true,
@@ -25,6 +28,7 @@
 
     const MODULE_LABELS = {
         lmsAssistant: 'LMS Assistant',
+        ibvButton: 'IBV Button',
         emailFilter: 'Email Filter',
         copyPaste: 'Copy/Paste',
         qcSearch: 'QC Search',
@@ -32,20 +36,24 @@
     };
 
     const MODULE_DESCRIPTIONS = {
-        lmsAssistant: "Highlights states, manages call hours",
+        lmsAssistant: "Highlights states, manages call hours (always enabled)",
+        ibvButton: "Adds a CRP button in LMS",
         emailFilter: "Filters the list of email templates",
         copyPaste: "Adds phone/email copy buttons",
         qcSearch: "QC Search — quick phone-based lookup",
         overpaidCheck: "Checks overpaid status with payments tracking"
     };
 
-    // Завантажуємо збережені налаштування з localStorage
+    // Завантажуємо збережені налаштування з localStorage для решти модулів.
+    // (Модуль lmsAssistant залишається завжди true.)
     Object.keys(MODULES).forEach(key => {
-        const saved = localStorage.getItem(`lms_module_${key}`);
-        if (saved !== null) MODULES[key] = JSON.parse(saved);
+        if (key !== 'lmsAssistant') {
+            const saved = localStorage.getItem(`lms_module_${key}`);
+            if (saved !== null) MODULES[key] = JSON.parse(saved);
+        }
     });
 
-    /*** ============ TopMenu ============ ***/
+    /*** ============ TopMenu Panel ============ ***/
     function findHelpMenuItem() {
         const menuCells = document.querySelectorAll('#TopMenu td');
         for (const cell of menuCells) {
@@ -63,7 +71,7 @@
             return;
         }
 
-        
+        // Створюємо пункт меню "LMS Assistant PRO"
         const newMenuItem = document.createElement('td');
         newMenuItem.id = "TopMenu-menuItemLMS";
         newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO&nbsp;';
@@ -80,7 +88,7 @@
         });
         helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
 
-        
+        // Створюємо dropdown меню
         const dropdown = document.createElement('div');
         dropdown.id = 'lmsDropdownMenu';
         Object.assign(dropdown.style, {
@@ -103,7 +111,7 @@
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
         });
 
-        
+        // Додаємо стилі для слайдерів
         const style = document.createElement('style');
         style.textContent = `
 .lms-switch {
@@ -143,7 +151,7 @@
 `;
         document.head.appendChild(style);
 
-        
+        // Створення пунктів меню для кожного модуля
         Object.keys(MODULES).forEach(key => {
             const wrapper = document.createElement('div');
             Object.assign(wrapper.style, {
@@ -167,7 +175,6 @@
                 transition: 'all 0.2s ease'
             });
 
-           
             const nameContainer = document.createElement('div');
             nameContainer.style.display = 'flex';
             nameContainer.style.alignItems = 'center';
@@ -175,7 +182,7 @@
             const moduleName = document.createElement('span');
             moduleName.textContent = MODULE_LABELS[key];
 
-            // Info icon
+            // Додаємо info icon
             const helpIcon = document.createElement('img');
             helpIcon.src = 'https://cdn-icons-png.flaticon.com/512/108/108153.png';
             helpIcon.alt = 'Info';
@@ -189,39 +196,23 @@
             nameContainer.appendChild(moduleName);
             nameContainer.appendChild(helpIcon);
 
-            // Hover
-            wrapper.addEventListener('mouseover', () => {
-                wrapper.style.backgroundColor = 'rgb(175, 209, 255)';
-                wrapper.style.color = 'black';
-                wrapper.style.textShadow = '1px 1px white';
-                newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
-                newMenuItem.style.color = 'black';
-                newMenuItem.style.textShadow = '1px 1px white';
-                helpIcon.style.filter = 'none';
-            });
-            wrapper.addEventListener('mouseout', () => {
-                wrapper.style.backgroundColor = 'transparent';
-                wrapper.style.color = 'white';
-                wrapper.style.textShadow = '1px 1px black';
-                newMenuItem.style.backgroundColor = '';
-                newMenuItem.style.color = 'white';
-                newMenuItem.style.textShadow = '1px 1px black';
-                helpIcon.style.filter = 'invert(1)';
-            });
-
-            
+            // Якщо модуль lmsAssistant – зробити перемикач недоступним (greyed out)
             const toggle = document.createElement('label');
             toggle.className = 'lms-switch';
 
             const input = document.createElement('input');
             input.type = 'checkbox';
             input.checked = MODULES[key];
-            input.onchange = () => {
-                MODULES[key] = input.checked;
-                localStorage.setItem(`lms_module_${key}`, input.checked);
-                location.reload();
-            };
-
+            if (key === 'lmsAssistant') {
+                input.disabled = true;
+                input.title = "This module is required and cannot be disabled.";
+            } else {
+                input.onchange = () => {
+                    MODULES[key] = input.checked;
+                    localStorage.setItem(`lms_module_${key}`, input.checked);
+                    location.reload();
+                };
+            }
             const slider = document.createElement('span');
             slider.className = 'lms-slider';
 
@@ -233,7 +224,7 @@
             dropdown.appendChild(wrapper);
         });
 
-        // "New Ideas / Bug Report"
+        // Додаємо пункт "New Ideas / Bug Report"
         const ideasWrapper = document.createElement('div');
         Object.assign(ideasWrapper.style, {
             boxSizing: 'border-box',
@@ -278,7 +269,7 @@
 
         document.body.appendChild(dropdown);
 
-        
+        // Hover ефекти для пункту верхнього меню
         newMenuItem.addEventListener('mouseover', () => {
             dropdown.style.display = 'block';
             newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
@@ -299,7 +290,7 @@
             newMenuItem.style.textShadow = '1px 1px black';
         });
 
-       
+        // Позиціюємо dropdown під пунктом меню
         const positionDropdown = () => {
             const rect = newMenuItem.getBoundingClientRect();
             dropdown.style.left = `${rect.left}px`;
