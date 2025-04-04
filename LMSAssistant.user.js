@@ -309,43 +309,61 @@
     injectTopMenuPanel();
 
     /*** ============ LMS Assistant (always enabled, not in menu) ============ ***/
-    if (MODULES.lmsAssistant && location.href.includes('CustomerDetails.aspx?')) {
-        togglepin();
-        setTimeout(() => {
-            const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)')
-                .textContent.trim().substring(0, 2);
-            const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
-            const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
-            const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
-            if (unsupportedStates.includes(custState)) {
-                alert(`Customer from ${custState}. Reloan not allowed.`);
-            }
-            [cellPhone, homePhone].forEach(phone => {
-                phone.style.fontWeight = '800';
-                phone.style.color = isCallable(custState) ? 'green' : 'red';
-            });
-        }, 1000);
+     if (MODULES.lmsAssistant) {
+        const callHours = { start: '07:00:00', end: '20:00:00' };
+        const tzData = {
+            'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
+            'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
+            'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
+            'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
+            'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
+            'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
+            'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
+            'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
+            'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
+            'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
+            'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
+            'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
+            'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
+            'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
+        };
+
+        function getLocalTime(state) {
+            const currTime = new Date();
+            return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
+        }
 
         function isCallable(state) {
-            const callHours = { start: '07:00:00', end: '20:00:00' };
-            const tzData = {
-                'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
-                'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
-                'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
-                'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
-                'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
-                'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
-                'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
-                'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
-                'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
-                'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
-                'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
-                'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
-                'WI': 'America/Chicago','WY': 'America/Denver'
-            };
-            const currTime = new Date();
-            const localTime = currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
-            return localTime > callHours.start && localTime < callHours.end;
+            const time = getLocalTime(state);
+            return time > callHours.start && time < callHours.end;
+        }
+
+        if (location.href.includes('CustomerDetails.aspx?')) {
+            togglepin();
+            setTimeout(() => {
+                const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)').textContent.trim().substring(0, 2);
+                const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
+                const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
+                const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
+                if (unsupportedStates.includes(custState)) {
+                    alert(`Customer from ${custState}. Reloan not allowed.`);
+                }
+                [cellPhone, homePhone].forEach(phone => {
+                    phone.style.fontWeight = '800';
+                    phone.style.color = isCallable(custState) ? 'green' : 'red';
+                });
+            }, 1000);
+        }
+
+
+        if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
+            const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
+            leads.forEach(row => {
+                const cell = row.querySelector('td:nth-child(9)');
+                const state = cell.textContent.trim().substring(0, 2);
+                cell.style.fontWeight = '800';
+                cell.style.color = isCallable(state) ? 'green' : 'red';
+            });
         }
     }
 
