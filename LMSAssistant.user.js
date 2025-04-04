@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.5
+// @version      1.6
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -146,7 +146,7 @@
 
         
         Object.keys(MODULES).forEach(key => {
-            if (key === 'lmsAssistant') return; // не додаємо у меню
+            if (key === 'lmsAssistant') return;
             const wrapper = document.createElement('div');
             Object.assign(wrapper.style, {
                 boxSizing: 'border-box',
@@ -338,22 +338,125 @@
             return time > callHours.start && time < callHours.end;
         }
 
-        if (location.href.includes('CustomerDetails.aspx?')) {
-            togglepin();
-            setTimeout(() => {
-                const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)').textContent.trim().substring(0, 2);
-                const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
-                const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
-                const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
-                if (unsupportedStates.includes(custState)) {
-                    alert(`Customer from ${custState}. Reloan not allowed.`);
-                }
-                [cellPhone, homePhone].forEach(phone => {
-                    phone.style.fontWeight = '800';
-                    phone.style.color = isCallable(custState) ? 'green' : 'red';
-                });
-            }, 1000);
+    if (location.href.includes('CustomerDetails.aspx?')) {
+    togglepin();
+
+    setTimeout(() => {
+        const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)').textContent.trim().substring(0, 2);
+        const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
+        const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
+        const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
+        if (unsupportedStates.includes(custState)) {
+            alert(`Customer from ${custState}. Reloan not allowed.`);
         }
+        [cellPhone, homePhone].forEach(phone => {
+            phone.style.fontWeight = '800';
+            phone.style.color = isCallable(custState) ? 'green' : 'red';
+        });
+
+        // ========== PWA Button Injection ==========
+        const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
+        if (sendBtn && !document.getElementById("sendPwaBtn")) {
+
+            const loanId = (() => {
+                const headerDiv = document.querySelector("div.Header");
+                const match = headerDiv?.innerText.match(/Loan[#№:]?\s*(\d+)/i);
+                return match ? match[1] : null;
+            })();
+
+            const customerId = (() => {
+                const profileTable = document.querySelector("table.ProfileProperties");
+                if (!profileTable) return null;
+                const rows = profileTable.querySelectorAll("tr");
+                for (let row of rows) {
+                    const tds = row.querySelectorAll("td");
+                    for (let i = 0; i < tds.length; i++) {
+                        if (tds[i].innerText.includes("Customer #")) {
+                            return tds[i + 1]?.innerText.trim() || null;
+                        }
+                    }
+                }
+                return null;
+            })();
+
+            const hasActiveLoan = () => {
+                const headers = Array.from(document.querySelectorAll("div.Header"));
+                return headers.some(header => header.innerText.toUpperCase().includes("ACTIVE"));
+            };
+
+            const hasActiveLoanMentionedInRefinance = () => {
+                const headers = Array.from(document.querySelectorAll("div.Header"));
+                let activeLoanId = null;
+                for (let header of headers) {
+                    const text = header.innerText.toUpperCase();
+                    if (text.includes("ACTIVE")) {
+                        const match = text.match(/LOAN[#№:]?\s*(\d+)/i);
+                        if (match) {
+                            activeLoanId = match[1];
+                            break;
+                        }
+                    }
+                }
+                if (!activeLoanId) return false;
+                const refinanceCell = Array.from(document.querySelectorAll("td")).find(td => td.innerText.includes("Refinance"));
+                return refinanceCell?.innerText.includes(activeLoanId) || false;
+            };
+
+            const shouldAnimate = hasActiveLoan() || hasActiveLoanMentionedInRefinance();
+
+            const style = document.createElement("style");
+            style.textContent = `
+                @keyframes pulse {
+                    0%   { transform: scale(1); }
+                    50%  { transform: scale(1.12); }
+                    100% { transform: scale(1); }
+                }
+                .attention {
+                    animation: pulse 1.5s ease-in-out infinite;
+                }
+            `;
+            document.head.appendChild(style);
+
+            const pwaBtn = document.createElement("input");
+            pwaBtn.type = "button";
+            pwaBtn.id = "sendPwaBtn";
+            pwaBtn.value = "Send PWA";
+            pwaBtn.title = "Send client our mobile app (PWA) instructions";
+
+            if (shouldAnimate) {
+                pwaBtn.classList.add("attention");
+            }
+
+            Object.assign(pwaBtn.style, {
+                padding: "4px",
+                fontFamily: "Arial, Helvetica, sans-serif",
+                fontWeight: "bold",
+                fontSize: "12px",
+                border: "1px solid #2e9fd8",
+                background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
+                color: "#DFDFDF",
+                cursor: "pointer",
+                marginLeft: "5px",
+                borderSpacing: "0px",
+                outline: "none"
+            });
+
+            pwaBtn.onclick = () => {
+                const letterId = 684;
+                const url = `https://apply.creditcube.com/plm.net/customers/popups/PreviewLetter.aspx` +
+                            `?action=send&customerid=${customerId}&letterid=${letterId}&loanid=${loanId}&mode=send`;
+                const iframe = document.createElement("iframe");
+                iframe.style.display = "none";
+                iframe.src = url;
+                document.body.appendChild(iframe);
+                pwaBtn.classList.remove("attention");
+            };
+
+            sendBtn.parentElement.insertBefore(pwaBtn, sendBtn.nextSibling);
+        }
+    }, 1000);
+}
+
 
 
         if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
