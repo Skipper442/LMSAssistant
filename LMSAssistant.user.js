@@ -2,11 +2,11 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.2
+// @version      1.3
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
-// @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
-// @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
+// @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/sales/LMSAssistant.user.js
+// @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/sales/LMSAssistant.user.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -15,10 +15,8 @@
     'use strict';
 
     /*** ============ Ініціалізація модулів ============ ***/
-    // Для Sales‑версії: включені тільки наступні модулі. 
-    // Модуль lmsAssistant завжди увімкнений – користувач не може його вимкнути.
     const MODULES = {
-        lmsAssistant: true, // Обов'язковий, не можна вимикати
+        lmsAssistant: true,  // цей модуль буде виконуватись, але не відображатиметься у панелі
         ibvButton: true,
         emailFilter: true,
         copyPaste: true,
@@ -27,7 +25,7 @@
     };
 
     const MODULE_LABELS = {
-        lmsAssistant: 'LMS Assistant',
+        // Ми НЕ виводимо lmsAssistant у панель (але все ще використовуємо його)
         ibvButton: 'IBV Button',
         emailFilter: 'Email Filter',
         copyPaste: 'Copy/Paste',
@@ -36,7 +34,7 @@
     };
 
     const MODULE_DESCRIPTIONS = {
-        lmsAssistant: "Highlights states, manages call hours (always enabled)",
+        lmsAssistant: "Highlights states, manages call hours",
         ibvButton: "Adds a CRP button in LMS",
         emailFilter: "Filters the list of email templates",
         copyPaste: "Adds phone/email copy buttons",
@@ -44,16 +42,13 @@
         overpaidCheck: "Checks overpaid status with payments tracking"
     };
 
-    // Завантажуємо збережені налаштування з localStorage для решти модулів.
-    // (Модуль lmsAssistant залишається завжди true.)
+    // Завантажуємо збережені налаштування з localStorage
     Object.keys(MODULES).forEach(key => {
-        if (key !== 'lmsAssistant') {
-            const saved = localStorage.getItem(`lms_module_${key}`);
-            if (saved !== null) MODULES[key] = JSON.parse(saved);
-        }
+        const saved = localStorage.getItem(`lms_module_${key}`);
+        if (saved !== null) MODULES[key] = JSON.parse(saved);
     });
 
-    /*** ============ TopMenu Panel ============ ***/
+    /*** ============ Панель у TopMenu ============ ***/
     function findHelpMenuItem() {
         const menuCells = document.querySelectorAll('#TopMenu td');
         for (const cell of menuCells) {
@@ -71,7 +66,6 @@
             return;
         }
 
-        // Створюємо пункт меню "LMS Assistant PRO"
         const newMenuItem = document.createElement('td');
         newMenuItem.id = "TopMenu-menuItemLMS";
         newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO&nbsp;';
@@ -88,7 +82,6 @@
         });
         helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
 
-        // Створюємо dropdown меню
         const dropdown = document.createElement('div');
         dropdown.id = 'lmsDropdownMenu';
         Object.assign(dropdown.style, {
@@ -111,7 +104,7 @@
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
         });
 
-        // Додаємо стилі для слайдерів
+        // Стилі для слайдерів
         const style = document.createElement('style');
         style.textContent = `
 .lms-switch {
@@ -151,8 +144,9 @@
 `;
         document.head.appendChild(style);
 
-        // Створення пунктів меню для кожного модуля
+        // Створюємо пункти меню для кожного модуля (крім lmsAssistant, який прихований)
         Object.keys(MODULES).forEach(key => {
+            if (key === 'lmsAssistant') return; // не додаємо у меню
             const wrapper = document.createElement('div');
             Object.assign(wrapper.style, {
                 boxSizing: 'border-box',
@@ -182,7 +176,7 @@
             const moduleName = document.createElement('span');
             moduleName.textContent = MODULE_LABELS[key];
 
-            // Додаємо info icon
+            // Info icon
             const helpIcon = document.createElement('img');
             helpIcon.src = 'https://cdn-icons-png.flaticon.com/512/108/108153.png';
             helpIcon.alt = 'Info';
@@ -196,23 +190,37 @@
             nameContainer.appendChild(moduleName);
             nameContainer.appendChild(helpIcon);
 
-            // Якщо модуль lmsAssistant – зробити перемикач недоступним (greyed out)
+            wrapper.addEventListener('mouseover', () => {
+                wrapper.style.backgroundColor = 'rgb(175, 209, 255)';
+                wrapper.style.color = 'black';
+                wrapper.style.textShadow = '1px 1px white';
+                newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
+                newMenuItem.style.color = 'black';
+                newMenuItem.style.textShadow = '1px 1px white';
+                helpIcon.style.filter = 'none';
+            });
+            wrapper.addEventListener('mouseout', () => {
+                wrapper.style.backgroundColor = 'transparent';
+                wrapper.style.color = 'white';
+                wrapper.style.textShadow = '1px 1px black';
+                newMenuItem.style.backgroundColor = '';
+                newMenuItem.style.color = 'white';
+                newMenuItem.style.textShadow = '1px 1px black';
+                helpIcon.style.filter = 'invert(1)';
+            });
+
             const toggle = document.createElement('label');
             toggle.className = 'lms-switch';
 
             const input = document.createElement('input');
             input.type = 'checkbox';
             input.checked = MODULES[key];
-            if (key === 'lmsAssistant') {
-                input.disabled = true;
-                input.title = "This module is required and cannot be disabled.";
-            } else {
-                input.onchange = () => {
-                    MODULES[key] = input.checked;
-                    localStorage.setItem(`lms_module_${key}`, input.checked);
-                    location.reload();
-                };
-            }
+            input.onchange = () => {
+                MODULES[key] = input.checked;
+                localStorage.setItem(`lms_module_${key}`, input.checked);
+                location.reload();
+            };
+
             const slider = document.createElement('span');
             slider.className = 'lms-slider';
 
@@ -269,7 +277,6 @@
 
         document.body.appendChild(dropdown);
 
-        // Hover ефекти для пункту верхнього меню
         newMenuItem.addEventListener('mouseover', () => {
             dropdown.style.display = 'block';
             newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
@@ -290,7 +297,6 @@
             newMenuItem.style.textShadow = '1px 1px black';
         });
 
-        // Позиціюємо dropdown під пунктом меню
         const positionDropdown = () => {
             const rect = newMenuItem.getBoundingClientRect();
             dropdown.style.left = `${rect.left}px`;
@@ -302,7 +308,7 @@
 
     injectTopMenuPanel();
 
-    /*** ============ LMS Assistant ============ ***/
+    /*** ============ LMS Assistant (always enabled, not in menu) ============ ***/
     if (MODULES.lmsAssistant && location.href.includes('CustomerDetails.aspx?')) {
         togglepin();
         setTimeout(() => {
@@ -413,7 +419,49 @@
             filterSelectOptions();
         }, 700));
     }
+/*** ============ IBV Button Injector ============ ***/
+if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
+    const getLoginName = (id) => {
+        return fetch(`https://apply.creditcube.com/plm.net/customers/reports/YodleeReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`)
+            .then(res => res.json())
+            .then(data => data?.userData?.[0]?.user?.loginName);
+    };
 
+    const waitForIBVButton = () => {
+        const jsonBtn = document.querySelector('input[value="Show JSON"]');
+        if (!jsonBtn) return setTimeout(waitForIBVButton, 500);
+        if (document.getElementById('openInCrpBtn')) return;
+
+        const btn = document.createElement('input');
+        btn.type = 'button';
+        btn.id = 'openInCrpBtn';
+        btn.value = 'Open in CRP';
+        Object.assign(btn.style, {
+            padding: '4px',
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+            fontSize: '12px',
+            border: '1px solid #2e9fd8',
+            background: '#2e9fd8 url(Images/global-button-back.png) left top repeat-x',
+            color: '#DFDFDF',
+            cursor: 'pointer',
+            marginLeft: '5px'
+        });
+
+        btn.onclick = async () => {
+            const select = document.getElementById('maincontent_ReportBarControl_YodleeIbvReports');
+            const selectedId = select?.value;
+            if (!selectedId) return alert('Select a report.');
+            const loginName = await getLoginName(selectedId);
+            if (loginName) {
+                const crpLink = `https://ibv.creditsense.ai/report/Yodlee/${loginName}`;
+                window.open(crpLink, '_blank');
+            } else alert('loginName not found.');
+        };
+        jsonBtn.after(btn);
+    };
+    waitForIBVButton();
+}
     /*** ============ Copy/Paste LMS ============ ***/
     if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
         function isUSPhoneNumber(str) {
