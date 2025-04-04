@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.4
+// @version      1.5
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -33,13 +33,13 @@
         overpaidCheck: 'Overpaid Check'
     };
 
-    const MODULE_DESCRIPTIONS = {
+      const MODULE_DESCRIPTIONS = {
         lmsAssistant: "Highlights states, manages call hours",
-        ibvButton: "Adds a CRP button in LMS",
+        ibvButton: "Adds a CRP button in LMS for quicker report access",
         emailFilter: "Filters the list of email templates",
-        copyPaste: "Adds phone/email copy buttons",
+        copyPaste: "Adds phone copy button",
         qcSearch: "QC Search — quick phone-based lookup",
-        overpaidCheck: "Checks overpaid status with payments tracking"
+        overpaidCheck: "Checks overpaid status and options for potential refinance"
     };
 
     
@@ -68,7 +68,7 @@
 
         const newMenuItem = document.createElement('td');
         newMenuItem.id = "TopMenu-menuItemLMS";
-        newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO&nbsp;';
+        newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO (Sales)&nbsp;';
         Object.assign(newMenuItem.style, {
             color: 'white',
             cursor: 'pointer',
