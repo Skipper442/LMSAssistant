@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.3
+// @version      1.4
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/sales/LMSAssistant.user.js
@@ -14,9 +14,9 @@
 (function () {
     'use strict';
 
-    /*** ============ Ініціалізація модулів ============ ***/
+    
     const MODULES = {
-        lmsAssistant: true,  // цей модуль буде виконуватись, але не відображатиметься у панелі
+        lmsAssistant: true,  // Logic will apply but module is hidden
         ibvButton: true,
         emailFilter: true,
         copyPaste: true,
@@ -25,7 +25,7 @@
     };
 
     const MODULE_LABELS = {
-        // Ми НЕ виводимо lmsAssistant у панель (але все ще використовуємо його)
+        
         ibvButton: 'IBV Button',
         emailFilter: 'Email Filter',
         copyPaste: 'Copy/Paste',
@@ -42,13 +42,13 @@
         overpaidCheck: "Checks overpaid status with payments tracking"
     };
 
-    // Завантажуємо збережені налаштування з localStorage
+    
     Object.keys(MODULES).forEach(key => {
         const saved = localStorage.getItem(`lms_module_${key}`);
         if (saved !== null) MODULES[key] = JSON.parse(saved);
     });
 
-    /*** ============ Панель у TopMenu ============ ***/
+    /*** ============ TopMenu ============ ***/
     function findHelpMenuItem() {
         const menuCells = document.querySelectorAll('#TopMenu td');
         for (const cell of menuCells) {
@@ -99,12 +99,12 @@
             backgroundRepeat: 'repeat-x',
             backgroundColor: 'rgba(0, 0, 0, 0.85)',
             border: 'none',
-            borderRadius: '4px',
+            borderRadius: 'none',
             zIndex: '9999',
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
         });
 
-        // Стилі для слайдерів
+        
         const style = document.createElement('style');
         style.textContent = `
 .lms-switch {
@@ -144,7 +144,7 @@
 `;
         document.head.appendChild(style);
 
-        // Створюємо пункти меню для кожного модуля (крім lmsAssistant, який прихований)
+        
         Object.keys(MODULES).forEach(key => {
             if (key === 'lmsAssistant') return; // не додаємо у меню
             const wrapper = document.createElement('div');
@@ -232,7 +232,7 @@
             dropdown.appendChild(wrapper);
         });
 
-        // Додаємо пункт "New Ideas / Bug Report"
+        // "New Ideas / Bug Report"
         const ideasWrapper = document.createElement('div');
         Object.assign(ideasWrapper.style, {
             boxSizing: 'border-box',
