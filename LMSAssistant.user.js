@@ -2,11 +2,11 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.0
+// @version      1.1
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
-// @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/sales/LMSAssistant.user.js
-// @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/sales/LMSAssistant.user.js
+// @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
+// @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
