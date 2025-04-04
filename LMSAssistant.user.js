@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.6
+// @version      1.61
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -656,9 +656,9 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
         const insertCharacters = () => {
             const inputValue = sourceInput.value;
             if (inputValue.length >= 10) {
-                targetInputs[0].value = inputValue.substring(1, 4);
-                targetInputs[1].value = inputValue.substring(4, 7);
-                targetInputs[2].value = inputValue.substring(7);
+                targetInputs[0].value = inputValue.substring(2, 5);
+                targetInputs[1].value = inputValue.substring(5, 8);
+                targetInputs[2].value = inputValue.substring(8);
                 sourceInput.value = '';
                 if (searchButton) searchButton.click();
             } else {
