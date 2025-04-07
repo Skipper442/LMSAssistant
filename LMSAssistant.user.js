@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.41
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
@@ -264,17 +264,18 @@ if (MODULES.lmsAssistant) {
     text.textContent = message;
 
     const closeBtn = document.createElement("button");
-   closeBtn.textContent = "OK";
+  closeBtn.textContent = "OK";
 closeBtn.style.marginTop = "10px";
 closeBtn.style.padding = "4px 12px";
-closeBtn.style.border = "1px solid #2e9fd8";
+closeBtn.style.border = "1px solid #a27c33";
 closeBtn.style.borderRadius = "4px";
-closeBtn.style.background = "#2e9fd8";
+closeBtn.style.background = "#5c4400";
 closeBtn.style.backgroundImage = "url(Images/global-button-back.png)";
 closeBtn.style.backgroundRepeat = "repeat-x";
-closeBtn.style.color = "#DFDFDF";
+closeBtn.style.color = "#fff";
 closeBtn.style.fontWeight = "bold";
 closeBtn.style.cursor = "pointer";
+closeBtn.style.fontFamily = "Arial, Helvetica, sans-serif";
 closeBtn.onclick = () => box.remove();
 
 
@@ -283,8 +284,8 @@ closeBtn.onclick = () => box.remove();
         top: "20px",
         left: "50%",
         transform: "translateX(-50%)",
-        backgroundColor: "#424242", // колір LMS
-        color: "#fff",
+        backgroundColor: "#fff3cd", // колір LMS
+        color: "#5c4400",
         padding: "15px 25px",
         borderRadius: "10px",
         fontSize: "15px",
