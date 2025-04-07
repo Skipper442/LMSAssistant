@@ -1,331 +1,186 @@
 // ==UserScript==
-// @name         LMS Assistant PRO (GitHub)
+// @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @author       Liam Moss and Jack Tyson
-// @version      1.94
-// @description  Extended version of "LMS Assistant". With additional modules and control panel
+// @version      1.0
+// @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
-// @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
-// @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
 // @grant        none
+// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-const MODULES = {
-    lmsAssistant: true,
-    ibvButton: true,
-    emailFilter: true,
-    toggleRemarks: true,
-    copyPaste: true,
-    qcSearch: true,
-    notifications: true,
-    overpaidCheck: true
-};
+    const MODULES = {
+        lmsAssistant: true,  // Hidden but always on
+        emailFilter: true,
+        copyPaste: true,
+        qcSearch: true,
+        notifications: true
+    };
 
-const MODULE_LABELS = {
-    lmsAssistant: 'LMS Assistant',
-    ibvButton: 'IBV Button',
-    emailFilter: 'Email Filter',
-    toggleRemarks: 'Toggle All Remarks',
-    copyPaste: 'Copy/Paste',
-    qcSearch: 'QC Search',
-    notifications: 'Notifications Sound BETA',
-    overpaidCheck: 'Overpaid Check'
-};
+    const MODULE_LABELS = {
+        emailFilter: 'Email Filter',
+        copyPaste: 'Copy/Paste',
+        qcSearch: 'QC Search',
+        notifications: 'Notifications'
+    };
 
+    const MODULE_DESCRIPTIONS = {
+        lmsAssistant: "Highlights states, manages call hours",
+        emailFilter: "Filters the list of email templates",
+        copyPaste: "Adds phone copy button",
+        qcSearch: "QC Search — quick phone-based lookup",
+        notifications: "Enables sound and notifications for the tab"
+    };
 
-const MODULE_DESCRIPTIONS = {
-    lmsAssistant: "Highlights states, manages call hours",
-  ibvButton: "Adds a CRP button in LMS",
-  emailFilter: "Filters the list of email templates",
-  toggleRemarks: "Adds a 'Toggle All Remarks' button",
-  copyPaste: "Adds phone/email copy buttons",
-  qcSearch: "QC Search — quick phone-based lookup",
-  notifications: "Enables sound and notifications for the tab"
-};
-
-
-Object.keys(MODULES).forEach(key => {
-    const saved = localStorage.getItem(`lms_module_${key}`);
-    if (saved !== null) MODULES[key] = JSON.parse(saved);
-});
-
-function findHelpMenuItem() {
-    const menuCells = document.querySelectorAll('#TopMenu td');
-    for (const cell of menuCells) {
-        if (cell.textContent.trim().toUpperCase() === 'HELP') {
-            return cell;
-        }
-    }
-    return null;
-}
-
-function injectTopMenuPanel() {
-    
-    const helpMenuItem = findHelpMenuItem();
-    if (!helpMenuItem) {
-        
-        console.warn('HELP menu item not found — cannot insert LMS Assistant PRO');
-        return;
-    }
-
-    
-    const newMenuItem = document.createElement('td');
-    newMenuItem.id = "TopMenu-menuItemLMS";
-    newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO&nbsp;';
-    Object.assign(newMenuItem.style, {
-        color: 'white',
-        cursor: 'pointer',
-        padding: '0 10px',
-        height: '30px',
-        lineHeight: '30px',
-        fontFamily: '"Segoe UI", Arial, sans-serif',
-        fontSize: '12px',
-        textShadow: '1px 1px #000',
-        textTransform: 'uppercase'
+    Object.keys(MODULES).forEach(key => {
+        const saved = localStorage.getItem(`lms_module_${key}`);
+        if (saved !== null) MODULES[key] = JSON.parse(saved);
     });
-helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
-    // 2. Creating dropdown
-    const dropdown = document.createElement('div');
-    dropdown.id = 'lmsDropdownMenu';
-    dropdown.style.display = 'none';
-    dropdown.style.position = 'absolute';
-    dropdown.style.width = '260px';
-    dropdown.style.borderCollapse = 'collapse';
-    dropdown.style.fontFamily = '"Segoe UI", Arial, sans-serif';
-    dropdown.style.fontSize = '11px';
-    dropdown.style.textTransform = 'uppercase';
-    dropdown.style.textAlign = 'left';
-    dropdown.style.textShadow = '1px 1px #000';
-    dropdown.style.color = 'white';
-    dropdown.style.backgroundImage = 'url(Images/submenu-back.png)';
-    dropdown.style.backgroundRepeat = 'repeat-x';
-    dropdown.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
-    dropdown.style.border = 'none';
-    dropdown.style.zIndex = '9999';
-    dropdown.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.3)';
 
+    function findHelpMenuItem() {
+        const menuCells = document.querySelectorAll('#TopMenu td');
+        for (const cell of menuCells) {
+            if (cell.textContent.trim().toUpperCase() === 'HELP') {
+                return cell;
+            }
+        }
+        return null;
+    }
 
-    const style = document.createElement('style');
-    style.textContent = `
-.lms-switch {
-  position: relative;
-  display: inline-block;
-  width: 36px;
-  height: 18px;
-  margin-left: 10px;
-}
+    function injectTopMenuPanel() {
+        const helpMenuItem = findHelpMenuItem();
+        if (!helpMenuItem) return;
+
+        const newMenuItem = document.createElement('td');
+        newMenuItem.id = "TopMenu-menuItemLMS";
+        newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO (Collections)&nbsp;';
+        Object.assign(newMenuItem.style, {
+            color: 'white', cursor: 'pointer', padding: '0 10px', height: '30px',
+            lineHeight: '30px', fontFamily: 'Segoe UI, Arial, sans-serif', fontSize: '12px',
+            textShadow: '1px 1px #000', textTransform: 'uppercase'
+        });
+        helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
+
+        const dropdown = document.createElement('div');
+        dropdown.id = 'lmsDropdownMenu';
+        Object.assign(dropdown.style, {
+            display: 'none', position: 'absolute', width: '260px',
+            fontFamily: 'Segoe UI, Arial, sans-serif', fontSize: '11px',
+            textTransform: 'uppercase', textAlign: 'left', textShadow: '1px 1px #000',
+            color: 'white', backgroundImage: 'url(Images/submenu-back.png)',
+            backgroundRepeat: 'repeat-x', backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            border: 'none', zIndex: '9999', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
+        });
+
+        const style = document.createElement('style');
+        style.textContent = `
+.lms-switch { position: relative; display: inline-block; width: 36px; height: 18px; margin-left: 10px; }
 .lms-switch input { display: none; }
 .lms-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0; left: 0;
-  right: 0; bottom: 0;
-  background-color: #ccc;
-  transition: .3s;
-  border-radius: 34px;
+  position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #ccc; transition: .3s; border-radius: 34px;
 }
 .lms-slider:before {
-  position: absolute;
-  content: "";
-  height: 14px;
-  width: 14px;
-  left: 2px;
-  bottom: 2px;
-  background-color: white;
-  transition: .3s;
-  border-radius: 50%;
+  position: absolute; content: ""; height: 14px; width: 14px;
+  left: 2px; bottom: 2px; background-color: white; transition: .3s; border-radius: 50%;
 }
 .lms-switch input:checked + .lms-slider {
-  background-color: #4CAF50; /* Зелений колір */
+  background-color: #4CAF50;
 }
 .lms-switch input:checked + .lms-slider:before {
   transform: translateX(18px);
-}
-`;
-    document.head.appendChild(style);
+}`;
+        document.head.appendChild(style);
 
+        Object.keys(MODULES).forEach(key => {
+            if (key === 'lmsAssistant') return;
+            const wrapper = document.createElement('div');
+            Object.assign(wrapper.style, {
+                boxSizing: 'border-box', width: '100%', height: '40px', padding: '1px 3px 1px 20px',
+                fontFamily: 'Segoe UI, Arial, sans-serif', fontSize: '11px', textTransform: 'uppercase',
+                textAlign: 'left', textShadow: '1px 1px #000', backgroundImage: 'url(Images/submenu-back.png)',
+                backgroundRepeat: 'repeat-x', backgroundColor: 'transparent', cursor: 'pointer',
+                color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                transition: 'all 0.2s ease'
+            });
 
-    Object.keys(MODULES).forEach(key => {
-        const wrapper = document.createElement('div');
-        Object.assign(wrapper.style, {
-            boxSizing: 'border-box',
-            width: '100%',
-            height: '40px',
-            padding: '1px 3px 1px 20px',
-            fontFamily: '"Segoe UI", Arial, sans-serif',
-            fontSize: '11px',
-            textTransform: 'uppercase',
-            textAlign: 'left',
-            textShadow: '1px 1px #000',
-            backgroundImage: 'url(Images/submenu-back.png)',
-            backgroundRepeat: 'repeat-x',
-            backgroundColor: 'transparent',
-            cursor: 'pointer',
-            color: 'white',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            transition: 'all 0.2s ease'
+            const nameContainer = document.createElement('div');
+            nameContainer.style.display = 'flex';
+            nameContainer.style.alignItems = 'center';
+
+            const moduleName = document.createElement('span');
+            moduleName.textContent = MODULE_LABELS[key];
+
+            const helpIcon = document.createElement('img');
+            helpIcon.src = 'https://cdn-icons-png.flaticon.com/512/108/108153.png';
+            helpIcon.alt = 'Info';
+            helpIcon.style.width = '14px';
+            helpIcon.style.height = '14px';
+            helpIcon.style.marginLeft = '5px';
+            helpIcon.style.cursor = 'help';
+            helpIcon.title = MODULE_DESCRIPTIONS[key] || 'LMS Module';
+            helpIcon.style.filter = 'invert(1)';
+
+            nameContainer.appendChild(moduleName);
+            nameContainer.appendChild(helpIcon);
+
+            wrapper.appendChild(nameContainer);
+
+            const toggle = document.createElement('label');
+            toggle.className = 'lms-switch';
+
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.checked = MODULES[key];
+            input.onchange = () => {
+                MODULES[key] = input.checked;
+                localStorage.setItem(`lms_module_${key}`, input.checked);
+                location.reload();
+            };
+
+            const slider = document.createElement('span');
+            slider.className = 'lms-slider';
+
+            toggle.appendChild(input);
+            toggle.appendChild(slider);
+            wrapper.appendChild(toggle);
+            dropdown.appendChild(wrapper);
         });
 
+        document.body.appendChild(dropdown);
 
-        const nameContainer = document.createElement('div');
-        nameContainer.style.display = 'flex';
-        nameContainer.style.alignItems = 'center';
-
-        // Module names
-        const moduleName = document.createElement('span');
-        moduleName.textContent = MODULE_LABELS[key];
-
-        // Info icon (for MODULE_DESCRIPTIONS)
-        const helpIcon = document.createElement('img');
-        helpIcon.src = 'https://cdn-icons-png.flaticon.com/512/108/108153.png';
-        helpIcon.alt = 'Info';
-        helpIcon.style.width = '14px';
-        helpIcon.style.height = '14px';
-        helpIcon.style.marginLeft = '5px';
-        helpIcon.style.cursor = 'help';
-        helpIcon.title = MODULE_DESCRIPTIONS[key] || 'LMS Module';
-        helpIcon.style.filter = 'invert(1)';
-
-        nameContainer.appendChild(moduleName);
-        nameContainer.appendChild(helpIcon);
-
-        // Hover (wrapper)
-        wrapper.addEventListener('mouseover', () => {
-            wrapper.style.backgroundColor = 'rgb(175, 209, 255)';
-            wrapper.style.color = 'black';
-            wrapper.style.textShadow = '1px 1px white';
+        newMenuItem.addEventListener('mouseover', () => {
+            dropdown.style.display = 'block';
             newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
             newMenuItem.style.color = 'black';
             newMenuItem.style.textShadow = '1px 1px white';
-
-            helpIcon.style.filter = 'none';
         });
-        wrapper.addEventListener('mouseout', () => {
-            wrapper.style.backgroundColor = 'transparent';
-            wrapper.style.color = 'white';
-            wrapper.style.textShadow = '1px 1px black';
+        newMenuItem.addEventListener('mouseout', () => {
+            dropdown.style.display = 'none';
             newMenuItem.style.backgroundColor = '';
             newMenuItem.style.color = 'white';
             newMenuItem.style.textShadow = '1px 1px black';
-
-            helpIcon.style.filter = 'invert(1)';
+        });
+        dropdown.addEventListener('mouseover', () => dropdown.style.display = 'block');
+        dropdown.addEventListener('mouseout', () => {
+            dropdown.style.display = 'none';
+            newMenuItem.style.backgroundColor = '';
+            newMenuItem.style.color = 'white';
+            newMenuItem.style.textShadow = '1px 1px black';
         });
 
-        const toggle = document.createElement('label');
-        toggle.className = 'lms-switch';
-
-        const input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = MODULES[key];
-        input.onchange = () => {
-            MODULES[key] = input.checked;
-            localStorage.setItem(`lms_module_${key}`, input.checked);
-            location.reload();
+        const positionDropdown = () => {
+            const rect = newMenuItem.getBoundingClientRect();
+            dropdown.style.left = `${rect.left}px`;
+            dropdown.style.top = `${rect.bottom}px`;
         };
+        positionDropdown();
+        window.addEventListener('resize', positionDropdown);
+    }
 
-        const slider = document.createElement('span');
-        slider.className = 'lms-slider';
-
-        toggle.appendChild(input);
-        toggle.appendChild(slider);
-
-        wrapper.appendChild(nameContainer);
-        wrapper.appendChild(toggle);
-
-        dropdown.appendChild(wrapper);
-    });
-
-    const ideasWrapper = document.createElement('div');
-    Object.assign(ideasWrapper.style, {
-        boxSizing: 'border-box',
-        width: '100%',
-        height: '40px',
-        padding: '1px 3px 1px 20px',
-        fontFamily: '"Segoe UI", Arial, sans-serif',
-        fontSize: '11px',
-        textTransform: 'uppercase',
-        textAlign: 'left',
-        textShadow: '1px 1px #000',
-        backgroundImage: 'url(Images/submenu-back.png)',
-        backgroundRepeat: 'repeat-x',
-        backgroundColor: 'transparent',
-        cursor: 'pointer',
-        color: 'white',
-        display: 'flex',
-        alignItems: 'center',
-        transition: 'all 0.2s ease'
-    });
-    ideasWrapper.textContent = 'New Ideas / Bug Report';
-
-    ideasWrapper.addEventListener('mouseover', () => {
-        ideasWrapper.style.backgroundColor = 'rgb(175, 209, 255)';
-        ideasWrapper.style.color = 'black';
-        ideasWrapper.style.textShadow = '1px 1px white';
-        newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
-        newMenuItem.style.color = 'black';
-        newMenuItem.style.textShadow = '1px 1px white';
-    });
-    ideasWrapper.addEventListener('mouseout', () => {
-        ideasWrapper.style.backgroundColor = 'transparent';
-        ideasWrapper.style.color = 'white';
-        ideasWrapper.style.textShadow = '1px 1px black';
-        newMenuItem.style.backgroundColor = '';
-        newMenuItem.style.color = 'white';
-        newMenuItem.style.textShadow = '1px 1px black';
-    });
-
-    // Google Form (URL)
-    ideasWrapper.addEventListener('click', () => {
-        window.open('https://forms.gle/esmUuaVD9oxCh7mz7');
-    });
-
-    dropdown.appendChild(ideasWrapper);
-
-
-    document.body.appendChild(dropdown);
-    helpMenuItem.parentNode.appendChild(newMenuItem);
-
-    // Hover for LMS Assistant PRO (header menu)
-    newMenuItem.addEventListener('mouseover', () => {
-        dropdown.style.display = 'block';
-        newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
-        newMenuItem.style.color = 'black';
-        newMenuItem.style.textShadow = '1px 1px white';
-    });
-    newMenuItem.addEventListener('mouseout', () => {
-        dropdown.style.display = 'none';
-        newMenuItem.style.backgroundColor = '';
-        newMenuItem.style.color = 'white';
-        newMenuItem.style.textShadow = '1px 1px black';
-    });
-    dropdown.addEventListener('mouseover', () => dropdown.style.display = 'block');
-    dropdown.addEventListener('mouseout', () => {
-        dropdown.style.display = 'none';
-        newMenuItem.style.backgroundColor = '';
-        newMenuItem.style.color = 'white';
-        newMenuItem.style.textShadow = '1px 1px black';
-    });
-
-
-    const positionDropdown = () => {
-        const rect = newMenuItem.getBoundingClientRect();
-        dropdown.style.left = `${rect.left}px`;
-        dropdown.style.top = `${rect.bottom}px`;
-    };
-    positionDropdown();
-    window.addEventListener('resize', positionDropdown);
-}
-
-
-
-injectTopMenuPanel();
-
-
+    injectTopMenuPanel();
 
     /*** ============ LMS Assistant ============ ***/
     if (MODULES.lmsAssistant) {
@@ -385,47 +240,7 @@ injectTopMenuPanel();
             });
         }
     }
-
-    /*** ============ IBV Button Injector ============ ***/
-
-    if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
-        const getLoginName = (id) => {
-            return fetch(`https://apply.creditcube.com/plm.net/customers/reports/YodleeReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`)
-                .then(res => res.json())
-                .then(data => data?.userData?.[0]?.user?.loginName);
-        };
-
-        const waitForIBVButton = () => {
-            const jsonBtn = document.querySelector('input[value="Show JSON"]');
-            if (!jsonBtn) return setTimeout(waitForIBVButton, 500);
-            if (document.getElementById('openInCrpBtn')) return;
-
-            const btn = document.createElement('input');
-            btn.type = 'button';
-            btn.id = 'openInCrpBtn';
-            btn.value = 'Open in CRP';
-            Object.assign(btn.style, {
-                padding: '4px', fontFamily: 'Arial', fontWeight: 'bold', fontSize: '12px',
-                border: '1px solid #2e9fd8', background: '#2e9fd8 url(Images/global-button-back.png) left top repeat-x',
-                color: '#DFDFDF', cursor: 'pointer', marginLeft: '5px'
-            });
-
-            btn.onclick = async () => {
-                const select = document.getElementById('maincontent_ReportBarControl_YodleeIbvReports');
-                const selectedId = select?.value;
-                if (!selectedId) return alert('Select a report.');
-                const loginName = await getLoginName(selectedId);
-                if (loginName) {
-                    const crpLink = `https://ibv.creditsense.ai/report/Yodlee/${loginName}`;
-                    window.open(crpLink, '_blank');
-                } else alert('loginName not found.');
-            };
-            jsonBtn.after(btn);
-        };
-        waitForIBVButton();
-    }
-
-    /*** ============ Email Category Filter ============ ***/
+/*** ============ Email Category Filter ============ ***/
 
     if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         const categories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
@@ -498,50 +313,7 @@ injectTopMenuPanel();
             filterSelectOptions();
         }, 700));
     }
-
-    /*** ============ Toggle All Remarks ============ ***/
-
-    if (MODULES.toggleRemarks && location.href.includes('LoanRemarks.aspx')) {
-        let allChecked = false;
-
-        function simulateUserClick(element) {
-            if (!element) return;
-            element.focus();
-            element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-            element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-            element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        }
-
-        function toggleAllRemarks() {
-            allChecked = !allChecked;
-            document.querySelectorAll("input[type='checkbox']").forEach(checkbox => {
-                if (checkbox.checked !== allChecked) simulateUserClick(checkbox);
-            });
-        }
-
-        function addToggleButton() {
-            const updateButton = document.querySelector("input#maincontent_Btn_Update");
-            if (!updateButton) return;
-
-            const button = document.createElement("button");
-            button.innerText = "Toggle all remarks";
-            Object.assign(button.style, {
-                padding: "4px", fontFamily: "Arial", fontWeight: "bold", fontSize: "12px",
-                border: "1px solid #2e9fd8", background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
-                color: "#DFDFDF", cursor: "pointer", marginRight: "10px"
-            });
-
-            button.onclick = (event) => {
-                event.preventDefault();
-                toggleAllRemarks();
-            };
-
-            updateButton.parentNode.insertBefore(button, updateButton);
-        }
-
-        addToggleButton();
-    }
-    /*** ============ Copy/Paste LMS ============ ***/
+/*** ============ Copy/Paste LMS ============ ***/
 
 if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
 
@@ -611,8 +383,7 @@ if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
         createCopyButton();
     });
 }
-
-    /*** ============ QC LMS Search Assistant ============ ***/
+/*** ============ QC LMS Search Assistant ============ ***/
 
     if (MODULES.qcSearch && location.href.includes('CustomersReport')) {
     const getElement = (selector) => document.querySelector(selector);
@@ -787,105 +558,5 @@ const PRIMARY_TAB_KEY = "primaryLock";
 
     observeNotifications();
     setInterval(checkNotifications, 10000);
-}
-/*** ============ Overpaid check module ============ ***/
-
-if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
-    'use strict';
-const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
-    // Перевіряємо, чи є статус "Gold", "Platinum", "VIP" або "Diamond"
-    const statusCells = document.querySelectorAll(statusColumnSelector);
-    let eligibleStatusFound = false;
-    statusCells.forEach(statusCell => {
-        const status = statusCell.textContent.trim();
-        const allowedStatuses = ["Gold", "Platinum", "VIP", "Diamond"];
-        if (allowedStatuses.includes(status)) {
-            eligibleStatusFound = true;
-        }
-    });
-
-    if (eligibleStatusFound) {
-        // Функція для парсингу суми
-        const extractAmount = (element) => {
-            return parseFloat(element.textContent.trim().replace('$', '').replace(',', ''));
-        };
-
-        // Показуємо відсоток поруч із Total Paid
-        const displayPercentage = (percentage, payments, status) => {
-            const percentageElement = document.createElement('span');
-            percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
-            percentageElement.classList.add('loan-comparison-tooltip');
-
-            if (percentage > 20) {
-                if (payments < 3 && !status.includes("Paid in Full")) {
-                    percentageElement.style.color = '#de9d1b';
-                    percentageElement.title = "Not enough payments made for potential refinancing.";
-                } else if (status.includes("Active") && status.includes("In-House Collections")) {
-                    percentageElement.style.color = 'red';
-                    percentageElement.title = "Last active loan is in collections.";
-                } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
-                    percentageElement.style.color = 'red';
-                    percentageElement.title = "Customer is in collection.";
-                } else {
-                    percentageElement.style.color = 'green';
-                    percentageElement.title = "Might be eligible, check with TL.";
-                }
-                percentageElement.style.fontWeight = '900';
-            } else {
-                percentageElement.style.color = 'red';
-                percentageElement.style.fontWeight = 'bold';
-            }
-
-            const totalPaidElement = document.querySelector(totalPaidSelector);
-            totalPaidElement.appendChild(percentageElement);
-        };
-
-        const calculatePercentage = (totalPaid, totalPrincipalLoaned) => {
-            return ((totalPaid - totalPrincipalLoaned) / totalPrincipalLoaned) * 100;
-        };
-
-        
-        const totalPrincipalLoanedSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(2)';
-        const totalPaidSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(4)';
-
-        
-        const loanStatusCells = document.querySelectorAll('.DataTable.LoansTbl tbody tr td:nth-child(3)');
-        let lastEligibleRowIndex = -1;
-        loanStatusCells.forEach((statusCell, index) => {
-            const status = statusCell.textContent.trim();
-            if (status.includes("Active") || status.includes("Paid in Full")) {
-                lastEligibleRowIndex = index;
-            } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
-                lastEligibleRowIndex = index;
-            }
-        });
-
-        if (lastEligibleRowIndex !== -1) {
-            const totalPrincipalLoanedElement = document.querySelector(totalPrincipalLoanedSelector);
-            const totalPaidElement = document.querySelector(totalPaidSelector);
-            if (totalPrincipalLoanedElement && totalPaidElement) {
-                const totalPrincipalLoaned = extractAmount(totalPrincipalLoanedElement);
-                const totalPaid = extractAmount(totalPaidElement);
-
-                // Останній рядок із потрібним статусом
-                const allRows = document.querySelectorAll('.DataTable.LoansTbl tbody tr');
-                const lastEligibleRow = allRows[lastEligibleRowIndex];
-
-                const paymentsElement = lastEligibleRow.querySelector('td:nth-child(11)');
-                const payments = parseInt(paymentsElement.textContent.trim());
-
-                const status = lastEligibleRow.querySelector('td:nth-child(3)').textContent.trim();
-                const percentage = calculatePercentage(totalPaid, totalPrincipalLoaned);
-
-                displayPercentage(percentage, payments, status);
-            } else {
-                console.error('One or more elements not found.');
-            }
-        } else {
-            console.log('No clients with eligible statuses found.');
-        }
-    } else {
-        console.log('No clients with eligible statuses found.');
-    }
 }
 })();
