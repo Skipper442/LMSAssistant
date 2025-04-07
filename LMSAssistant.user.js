@@ -12,7 +12,7 @@
     'use strict';
 
     const MODULES = {
-        lmsAssistant: true,  // Hidden but always on
+        lmsAssistant: true, // Hidden but always on
         emailFilter: true,
         copyPaste: true,
         qcSearch: true,
@@ -23,7 +23,7 @@
         emailFilter: 'Email Filter',
         copyPaste: 'Copy/Paste',
         qcSearch: 'QC Search',
-        notifications: 'Notifications'
+        notifications: 'Notifications BETA'
     };
 
     const MODULE_DESCRIPTIONS = {
@@ -184,7 +184,7 @@
 
     /*** ============ LMS Assistant ============ ***/
     if (MODULES.lmsAssistant) {
-        const callHours = { start: '07:00:00', end: '20:00:00' };
+        const callHours = { start: '08:00:00', end: '20:00:00' };
         const tzData = {
             'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
             'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
@@ -337,7 +337,7 @@ if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
             alert("No US phone numbers found on this page.");
         } else if (usPhoneNumbers.length === 1) {
             // Якщо знайдено рівно 1 номер
-            var phoneNumber = "211" + usPhoneNumbers[0];
+            var phoneNumber = "111" + usPhoneNumbers[0];
             navigator.clipboard.writeText(phoneNumber)
               .then(() => {
                 console.log("Copied: " + phoneNumber);
@@ -346,7 +346,7 @@ if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
 
         } else {
             // Якщо знайдено 2 і більше номерів
-            var phoneNumber2 = "211" + usPhoneNumbers[1];
+            var phoneNumber2 = "111" + usPhoneNumbers[1];
             navigator.clipboard.writeText(phoneNumber2)
               .then(() => {
                 console.log("Copied: " + phoneNumber2);
@@ -401,9 +401,9 @@ if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
     const insertCharacters = () => {
         const inputValue = sourceInput.value;
         if (inputValue.length >= 10) {
-            targetInputs[0].value = inputValue.substring(1, 4);
-            targetInputs[1].value = inputValue.substring(4, 7);
-            targetInputs[2].value = inputValue.substring(7);
+            targetInputs[0].value = inputValue.substring(2, 5);
+            targetInputs[1].value = inputValue.substring(5, 8);
+            targetInputs[2].value = inputValue.substring(8);
             sourceInput.value = '';
             if (searchButton) searchButton.click();
         } else {
