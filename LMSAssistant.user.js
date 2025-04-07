@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
@@ -220,64 +220,121 @@
 
     injectTopMenuPanel();
 
-    /*** ============ LMS Assistant ============ ***/
-    if (MODULES.lmsAssistant) {
-        const callHours = { start: '08:00:00', end: '20:00:00' };
-        const tzData = {
-            'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
-            'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
-            'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
-            'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
-            'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
-            'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
-            'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
-            'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
-            'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
-            'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
-            'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
-            'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
-            'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
-            'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
-        };
+  /*** ============ LMS Assistant ============ ***/
+if (MODULES.lmsAssistant) {
+    const callHours = { start: '08:00:00', end: '20:00:00' };
+    const tzData = {
+        'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
+        'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
+        'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
+        'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
+        'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
+        'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
+        'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
+        'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
+        'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
+        'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
+        'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
+        'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
+        'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
+        'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
+    };
 
-        function getLocalTime(state) {
-            const currTime = new Date();
-            return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
-        }
+    const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
+    const softPolicyStates = ['MD', 'NC', 'IN', 'MN'];
 
-        function isCallable(state) {
-            const time = getLocalTime(state);
-            return time > callHours.start && time < callHours.end;
-        }
-
-        if (location.href.includes('CustomerDetails.aspx?')) {
-            togglepin();
-            setTimeout(() => {
-                const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)').textContent.trim().substring(0, 2);
-                const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
-                const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
-                const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
-                if (unsupportedStates.includes(custState)) {
-                    alert(`Customer from ${custState}. Reloan not allowed.`);
-                }
-                [cellPhone, homePhone].forEach(phone => {
-                    phone.style.fontWeight = '800';
-                    phone.style.color = isCallable(custState) ? 'green' : 'red';
-                });
-            }, 1000);
-        }
-
-
-        if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
-            const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
-            leads.forEach(row => {
-                const cell = row.querySelector('td:nth-child(9)');
-                const state = cell.textContent.trim().substring(0, 2);
-                cell.style.fontWeight = '800';
-                cell.style.color = isCallable(state) ? 'green' : 'red';
-            });
-        }
+    function getLocalTime(state) {
+        const currTime = new Date();
+        return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
     }
+
+    function isCallable(state) {
+        const time = getLocalTime(state);
+        return time > callHours.start && time < callHours.end;
+    }
+
+    function showCustomAlert(message) {
+    const existing = document.getElementById("customLmsAlert");
+    if (existing) existing.remove();
+
+    const box = document.createElement("div");
+    box.id = "customLmsAlert";
+
+    const text = document.createElement("div");
+    text.textContent = message;
+
+    const closeBtn = document.createElement("button");
+   closeBtn.textContent = "OK";
+closeBtn.style.marginTop = "10px";
+closeBtn.style.padding = "4px 12px";
+closeBtn.style.border = "1px solid #2e9fd8";
+closeBtn.style.borderRadius = "4px";
+closeBtn.style.background = "#2e9fd8";
+closeBtn.style.backgroundImage = "url(Images/global-button-back.png)";
+closeBtn.style.backgroundRepeat = "repeat-x";
+closeBtn.style.color = "#DFDFDF";
+closeBtn.style.fontWeight = "bold";
+closeBtn.style.cursor = "pointer";
+closeBtn.onclick = () => box.remove();
+
+
+    Object.assign(box.style, {
+        position: "fixed",
+        top: "20px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        backgroundColor: "#424242", // колір LMS
+        color: "#fff",
+        padding: "15px 25px",
+        borderRadius: "10px",
+        fontSize: "15px",
+        fontFamily: "Segoe UI, sans-serif",
+        fontWeight: "500",
+        zIndex: "99999",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+        maxWidth: "90%",
+        textAlign: "center"
+    });
+
+    box.appendChild(text);
+    box.appendChild(closeBtn);
+    document.body.appendChild(box);
+}
+
+
+    if (location.href.includes('CustomerDetails.aspx?')) {
+        togglepin();
+        setTimeout(() => {
+            const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)').textContent.trim().substring(0, 2);
+            const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
+            const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
+
+            if (unsupportedStates.includes(custState)) {
+                showCustomAlert(`⚠️ Customer from ${custState}. Reloan not allowed. ⚠️`);
+            } else if (softPolicyStates.includes(custState)) {
+                showCustomAlert(`☝️ Soft policy state (${custState}). Communicate respectfully and avoid pressure.`);
+            }
+
+            [cellPhone, homePhone].forEach(phone => {
+                phone.style.fontWeight = '800';
+                phone.style.color = isCallable(custState) ? 'green' : 'red';
+            });
+        }, 1000);
+    }
+
+    if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
+        const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
+        leads.forEach(row => {
+            const cell = row.querySelector('td:nth-child(9)');
+            const state = cell.textContent.trim().substring(0, 2);
+            cell.style.fontWeight = '800';
+            cell.style.color = isCallable(state) ? 'green' : 'red';
+        });
+    }
+}
+
+
+
 /*** ============ Email Category Filter ============ ***/
 
     if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
