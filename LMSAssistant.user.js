@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @grant        none
@@ -125,7 +125,6 @@
 
             nameContainer.appendChild(moduleName);
             nameContainer.appendChild(helpIcon);
-
             wrapper.appendChild(nameContainer);
 
             const toggle = document.createElement('label');
@@ -146,8 +145,45 @@
             toggle.appendChild(input);
             toggle.appendChild(slider);
             wrapper.appendChild(toggle);
+            wrapper.addEventListener('mouseover', () => {
+                wrapper.style.backgroundColor = 'rgb(175, 209, 255)';
+                wrapper.style.color = 'black';
+                wrapper.style.textShadow = '1px 1px white';
+                helpIcon.style.filter = 'none';
+            });
+            wrapper.addEventListener('mouseout', () => {
+                wrapper.style.backgroundColor = 'transparent';
+                wrapper.style.color = 'white';
+                wrapper.style.textShadow = '1px 1px black';
+                helpIcon.style.filter = 'invert(1)';
+            });
+
             dropdown.appendChild(wrapper);
         });
+
+        const ideasWrapper = document.createElement('div');
+        Object.assign(ideasWrapper.style, {
+            boxSizing: 'border-box', width: '100%', height: '40px', padding: '1px 3px 1px 20px',
+            fontFamily: 'Segoe UI, Arial, sans-serif', fontSize: '11px', textTransform: 'uppercase',
+            textAlign: 'left', textShadow: '1px 1px #000', backgroundImage: 'url(Images/submenu-back.png)',
+            backgroundRepeat: 'repeat-x', backgroundColor: 'transparent', cursor: 'pointer',
+            color: 'white', display: 'flex', alignItems: 'center', transition: 'all 0.2s ease'
+        });
+        ideasWrapper.textContent = 'New Ideas / Bug Report';
+        ideasWrapper.addEventListener('mouseover', () => {
+            ideasWrapper.style.backgroundColor = 'rgb(175, 209, 255)';
+            ideasWrapper.style.color = 'black';
+            ideasWrapper.style.textShadow = '1px 1px white';
+        });
+        ideasWrapper.addEventListener('mouseout', () => {
+            ideasWrapper.style.backgroundColor = 'transparent';
+            ideasWrapper.style.color = 'white';
+            ideasWrapper.style.textShadow = '1px 1px black';
+        });
+        ideasWrapper.addEventListener('click', () => {
+            window.open('https://forms.gle/esmUuaVD9oxCh7mz7', '_blank');
+        });
+        dropdown.appendChild(ideasWrapper);
 
         document.body.appendChild(dropdown);
 
