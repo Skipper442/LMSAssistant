@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.41
+// @version      1.5
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
@@ -336,79 +336,140 @@ closeBtn.onclick = () => box.remove();
 
 
 
-/*** ============ Email Category Filter ============ ***/
+/*** ============ Email/TXT Category Filter ============ ***/
 
-    if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
-        const categories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
-        const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
-        const PANEL_ID = 'emailCategoryControlPanel';
+if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
+    const rawCategories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
+    const renamedCategories = {
+        "Loan Letters": "Support",
+        "Collection Letters": "Collection",
+        "Marketing Letters": "Marketing",
+        "DRS Letters": "DRS"
+    };
 
-        const createControlPanel = () => {
-            if (document.getElementById(PANEL_ID)) return;
-            const panel = document.createElement('div');
-            panel.id = PANEL_ID;
-            panel.style.marginLeft = '10px';
-            panel.style.display = 'inline-block';
-            const labelText = document.createElement('span');
-            labelText.textContent = "Categories:";
-            labelText.style.marginRight = "10px";
-            panel.appendChild(labelText);
+    const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
+    const PANEL_ID = 'emailCategoryControlPanel';
 
-            categories.forEach(cat => {
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.checked = JSON.parse(localStorage.getItem(`show_${cat}`) || "true");
-                checkbox.style.marginRight = '5px';
-                checkbox.addEventListener('change', () => {
-                    localStorage.setItem(`show_${cat}`, checkbox.checked);
-                    filterSelectOptions();
-                });
+    const getSelectedLetterType = () => {
+        const select = document.querySelector('select[id$="LetterAction_0"]');
+        return select?.value || "send";
+    };
 
-                const label = document.createElement('label');
-                label.style.marginRight = '10px';
-                label.style.cursor = 'pointer';
-                label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(cat));
-                panel.appendChild(label);
+    const getLetterSelectId = () => {
+        const type = getSelectedLetterType();
+        switch (type) {
+            case "send": return "#ctl00_LoansRepeater_Letter_ForEmail_0";
+            case "textmessage": return "#ctl00_LoansRepeater_Letter_ForTextMessage_0";
+            default: return null;
+        }
+    };
+
+    const createControlPanel = () => {
+        if (document.getElementById(PANEL_ID)) return;
+
+        const panel = document.createElement('div');
+        panel.id = PANEL_ID;
+        panel.style.marginLeft = '10px';
+        panel.style.display = 'inline-block';
+
+        const labelText = document.createElement('span');
+        labelText.textContent = "Categories:";
+        labelText.style.marginRight = "10px";
+        panel.appendChild(labelText);
+
+        rawCategories.forEach(cat => {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = JSON.parse(localStorage.getItem(`show_${cat}`) || "true");
+            checkbox.style.marginRight = '5px';
+            checkbox.dataset.original = cat;
+            checkbox.addEventListener('change', () => {
+                localStorage.setItem(`show_${cat}`, checkbox.checked);
+                filterSelectOptions();
             });
 
-            const sendButton = document.querySelector('input[type="submit"][value="Send"]');
-            if (sendButton && sendButton.parentElement) {
-                sendButton.parentElement.insertBefore(panel, sendButton.nextSibling);
+            const label = document.createElement('label');
+            label.style.marginRight = '10px';
+            label.style.cursor = 'pointer';
+            label.dataset.category = cat;
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(renamedCategories[cat] || cat));
+            panel.appendChild(label);
+        });
+
+        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
+        if (sendButton && sendButton.parentElement) {
+            sendButton.parentElement.insertBefore(panel, sendButton.nextSibling);
+        }
+    };
+
+    const filterSelectOptions = () => {
+        const selectId = getLetterSelectId();
+        if (!selectId) return;
+
+        const select = document.querySelector(selectId);
+        if (!select) return;
+
+        const letterType = getSelectedLetterType();
+
+        // hide marketing checkbox for TXT
+        const marketingLabel = [...document.querySelectorAll(`#${PANEL_ID} label`)].find(lbl => lbl.dataset.category === "Marketing Letters");
+        if (marketingLabel) {
+            marketingLabel.style.display = (letterType === "textmessage") ? "none" : "inline-block";
+        }
+
+        let currentCategory = null;
+        Array.from(select.options).forEach(option => {
+            const text = option.textContent.trim();
+
+            if (rawCategories.some(cat => text === `-- ${cat} --`)) {
+                currentCategory = rawCategories.find(cat => text === `-- ${cat} --`);
+                option.style.display = '';
+                return;
             }
-        };
 
-        const filterSelectOptions = () => {
-            const select = document.querySelector('#ctl00_LoansRepeater_Letter_ForEmail_0');
-            if (!select) return;
-
-            let currentCategory = null;
-            Array.from(select.options).forEach(option => {
-                const text = option.textContent.trim();
-                if (categories.some(cat => text === `-- ${cat} --`)) {
-                    currentCategory = categories.find(cat => text === `-- ${cat} --`);
-                    option.style.display = '';
-                    return;
-                }
+            let show = true;
+            if (letterType === "send") {
                 const isDRS = text.includes("[z3RDParty]");
-                const showCurrentCategory = currentCategory && JSON.parse(localStorage.getItem(`show_${currentCategory}`) || "true");
-                const shouldHide =
-                    unwantedEmails.includes(text) ||
-                    (!isDRS && !showCurrentCategory) ||
-                    (isDRS && !JSON.parse(localStorage.getItem("show_DRS Letters") || "false"));
+                const showCurrent = currentCategory && JSON.parse(localStorage.getItem(`show_${currentCategory}`) || "true");
+                show = !unwantedEmails.includes(text) && ((showCurrent && !isDRS) || (isDRS && JSON.parse(localStorage.getItem("show_DRS Letters") || "false")));
+            } else if (letterType === "textmessage") {
+                const isSupport = text.includes("(Sup)");
+                const isCollection = text.includes("(Coll)");
+                const isDRS = text.includes("{zTXT}") || text.includes("(3RDParty)");
 
-                option.style.display = shouldHide ? 'none' : '';
+                const showSupport = JSON.parse(localStorage.getItem("show_Loan Letters") || "true");
+                const showCollection = JSON.parse(localStorage.getItem("show_Collection Letters") || "true");
+                const showDRS = JSON.parse(localStorage.getItem("show_DRS Letters") || "true");
+
+                show =
+                    (isSupport && showSupport) ||
+                    (isCollection && showCollection && !isDRS) ||
+                    (isDRS && showDRS);
+            }
+            option.style.display = show ? '' : 'none';
+        });
+    };
+
+    const observer = new MutationObserver(filterSelectOptions);
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    window.addEventListener('load', () => setTimeout(() => {
+        createControlPanel();
+        filterSelectOptions();
+
+        const letterTypeSelector = document.querySelector('select[id$="LetterAction_0"]');
+        if (letterTypeSelector) {
+            letterTypeSelector.addEventListener("change", () => {
+                setTimeout(() => {
+                    filterSelectOptions();
+                }, 50);
             });
-        };
+        }
+    }, 700));
+}
 
-        const observer = new MutationObserver(filterSelectOptions);
-        observer.observe(document.body, { childList: true, subtree: true });
 
-        window.addEventListener('load', () => setTimeout(() => {
-            createControlPanel();
-            filterSelectOptions();
-        }, 700));
-    }
 /*** ============ Copy/Paste LMS ============ ***/
 
 if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
