@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
@@ -219,8 +219,7 @@
     }
 
     injectTopMenuPanel();
-
-  /*** ============ LMS Assistant ============ ***/
+/*** ============ LMS Assistant ============ ***/
 if (MODULES.lmsAssistant) {
     const callHours = { start: '08:00:00', end: '20:00:00' };
     const tzData = {
@@ -254,73 +253,80 @@ if (MODULES.lmsAssistant) {
     }
 
     function showCustomAlert(message) {
-    const existing = document.getElementById("customLmsAlert");
-    if (existing) existing.remove();
+        const existing = document.getElementById("customLmsAlert");
+        if (existing) existing.remove();
 
-    const box = document.createElement("div");
-    box.id = "customLmsAlert";
+        const box = document.createElement("div");
+        box.id = "customLmsAlert";
 
-    const text = document.createElement("div");
-    text.textContent = message;
+        const text = document.createElement("div");
+        text.textContent = message;
 
-    const closeBtn = document.createElement("button");
-  closeBtn.textContent = "OK";
-closeBtn.style.marginTop = "10px";
-closeBtn.style.padding = "4px 12px";
-closeBtn.style.border = "1px solid #a27c33";
-closeBtn.style.borderRadius = "4px";
-closeBtn.style.background = "#5c4400";
-closeBtn.style.backgroundImage = "url(Images/global-button-back.png)";
-closeBtn.style.backgroundRepeat = "repeat-x";
-closeBtn.style.color = "#fff";
-closeBtn.style.fontWeight = "bold";
-closeBtn.style.cursor = "pointer";
-closeBtn.style.fontFamily = "Arial, Helvetica, sans-serif";
-closeBtn.onclick = () => box.remove();
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "OK";
+        closeBtn.style.marginTop = "10px";
+        closeBtn.style.padding = "4px 12px";
+        closeBtn.style.border = "1px solid #a27c33";
+        closeBtn.style.borderRadius = "4px";
+        closeBtn.style.background = "#5c4400";
+        closeBtn.style.backgroundImage = "url(Images/global-button-back.png)";
+        closeBtn.style.backgroundRepeat = "repeat-x";
+        closeBtn.style.color = "#fff";
+        closeBtn.style.fontWeight = "bold";
+        closeBtn.style.cursor = "pointer";
+        closeBtn.style.fontFamily = "Arial, Helvetica, sans-serif";
+        closeBtn.onclick = () => box.remove();
 
+        Object.assign(box.style, {
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#fff3cd",
+            color: "#5c4400",
+            padding: "15px 25px",
+            borderRadius: "10px",
+            fontSize: "15px",
+            fontFamily: "Segoe UI, sans-serif",
+            fontWeight: "500",
+            zIndex: "99999",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            maxWidth: "90%",
+            textAlign: "center"
+        });
 
-    Object.assign(box.style, {
-        position: "fixed",
-        top: "20px",
-        left: "50%",
-        transform: "translateX(-50%)",
-        backgroundColor: "#fff3cd", // колір LMS
-        color: "#5c4400",
-        padding: "15px 25px",
-        borderRadius: "10px",
-        fontSize: "15px",
-        fontFamily: "Segoe UI, sans-serif",
-        fontWeight: "500",
-        zIndex: "99999",
-        boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-        maxWidth: "90%",
-        textAlign: "center"
-    });
-
-    box.appendChild(text);
-    box.appendChild(closeBtn);
-    document.body.appendChild(box);
-}
-
+        box.appendChild(text);
+        box.appendChild(closeBtn);
+        document.body.appendChild(box);
+    }
 
     if (location.href.includes('CustomerDetails.aspx?')) {
         togglepin();
-        setTimeout(() => {
-            const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)').textContent.trim().substring(0, 2);
+
+        const observer = new MutationObserver((mutations, obs) => {
+            const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
             const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
             const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
 
-            if (unsupportedStates.includes(custState)) {
-                showCustomAlert(`⚠️ Customer from ${custState}. Reloan not allowed. ⚠️`);
-            } else if (softPolicyStates.includes(custState)) {
-                showCustomAlert(`☝️ Soft policy state (${custState}). Communicate respectfully and avoid pressure.`);
-            }
+            if (custCell && cellPhone && homePhone) {
+                const custState = custCell.textContent.trim().substring(0, 2);
 
-            [cellPhone, homePhone].forEach(phone => {
-                phone.style.fontWeight = '800';
-                phone.style.color = isCallable(custState) ? 'green' : 'red';
-            });
-        }, 1000);
+                if (unsupportedStates.includes(custState)) {
+                    showCustomAlert(`⚠️ Customer from ${custState}. Reloan not allowed. ⚠️`);
+                } else if (softPolicyStates.includes(custState)) {
+                    showCustomAlert(`☝️ Soft policy state (${custState}). Communicate respectfully and avoid pressure.`);
+                }
+
+                [cellPhone, homePhone].forEach(phone => {
+                    phone.style.fontWeight = '800';
+                    phone.style.color = isCallable(custState) ? 'green' : 'red';
+                });
+
+                obs.disconnect(); // stop observing
+            }
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
     }
 
     if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
@@ -333,7 +339,6 @@ closeBtn.onclick = () => box.remove();
         });
     }
 }
-
 
 
 /*** ============ Email/TXT Category Filter ============ ***/
@@ -412,7 +417,6 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
 
         const letterType = getSelectedLetterType();
 
-        // hide marketing checkbox for TXT
         const marketingLabel = [...document.querySelectorAll(`#${PANEL_ID} label`)].find(lbl => lbl.dataset.category === "Marketing Letters");
         if (marketingLabel) {
             marketingLabel.style.display = (letterType === "textmessage") ? "none" : "inline-block";
@@ -451,10 +455,13 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         });
     };
 
-    const observer = new MutationObserver(filterSelectOptions);
-    observer.observe(document.body, { childList: true, subtree: true });
+    const waitForSendButton = () => {
+        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
+        if (!sendButton) {
+            requestAnimationFrame(waitForSendButton);
+            return;
+        }
 
-    window.addEventListener('load', () => setTimeout(() => {
         createControlPanel();
         filterSelectOptions();
 
@@ -466,56 +473,44 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
                 }, 50);
             });
         }
-    }, 700));
+    };
+
+    const observer = new MutationObserver(waitForSendButton);
+    observer.observe(document.body, { childList: true, subtree: true });
 }
-
-
-/*** ============ Copy/Paste LMS ============ ***/
+/*** ============ Copy/Paste LMS (Stable with Observer) ============ ***/
 
 if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
-
     function isUSPhoneNumber(str) {
-        var regex = /^\(?(\d{3})\)?[- .]?(\d{3})[- .]?(\d{4})$/;
-        return regex.test(str);
+        return /^\(?(\d{3})\)?[- .]?(\d{3})[- .]?(\d{4})$/.test(str);
     }
 
     function displayUSPhoneNumbers() {
-        var text = document.body.innerText;
-
-        var matches = text.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g);
+        const text = document.body.innerText;
+        const matches = text.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g);
         if (!matches) {
             alert("No phone numbers found on this page.");
             return;
         }
 
-        var usPhoneNumbers = matches.filter(isUSPhoneNumber);
-
+        const usPhoneNumbers = matches.filter(isUSPhoneNumber);
         if (usPhoneNumbers.length === 0) {
             alert("No US phone numbers found on this page.");
-        } else if (usPhoneNumbers.length === 1) {
-            // Якщо знайдено рівно 1 номер
-            var phoneNumber = "111" + usPhoneNumbers[0];
-            navigator.clipboard.writeText(phoneNumber)
-              .then(() => {
-                console.log("Copied: " + phoneNumber);
-              })
-              .catch(err => console.error("Failed to copy:", err));
-
         } else {
-            // Якщо знайдено 2 і більше номерів
-            var phoneNumber2 = "111" + usPhoneNumbers[1];
-            navigator.clipboard.writeText(phoneNumber2)
-              .then(() => {
-                console.log("Copied: " + phoneNumber2);
-              })
-              .catch(err => console.error("Failed to copy:", err));
+            const phoneNumber = "111" + usPhoneNumbers[Math.min(1, usPhoneNumbers.length - 1)];
+            navigator.clipboard.writeText(phoneNumber)
+                .then(() => console.log("Copied: " + phoneNumber))
+                .catch(err => console.error("Failed to copy:", err));
         }
     }
 
-    // Функція створення кнопки
     function createCopyButton() {
-        var button = document.createElement("button");
+        if (document.getElementById("copyLmsBtn")) return;
+
+        const button = document.createElement("button");
+        button.id = "copyLmsBtn";
         button.innerHTML = "Copy Cell Number";
+
         Object.assign(button.style, {
             position: "fixed",
             bottom: "20px",
@@ -525,21 +520,28 @@ if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
             background: "#2e9fd8",
             color: "#fff",
             border: "none",
-            borderRadius: "none",
+            borderRadius: "4px",
             cursor: "pointer",
-            fontWeight: "bold"
+            fontWeight: "bold",
+            fontFamily: "Arial, Helvetica, sans-serif"
         });
-        button.onclick = function() {
-            displayUSPhoneNumbers();
-        };
+
+        button.onclick = displayUSPhoneNumbers;
         document.body.appendChild(button);
     }
 
-    // Додамо кнопку після завантаження
-    window.addEventListener('load', function() {
-        createCopyButton();
+    // Стежимо за появою тіла сторінки та кнопки "Send"
+    const observer = new MutationObserver(() => {
+        const targetReady = document.querySelector('#ctl00_Span_CellPhone') || document.querySelector('#ContactSection');
+        if (targetReady) {
+            createCopyButton();
+            observer.disconnect(); // лише один раз
+        }
     });
+
+    observer.observe(document.body, { childList: true, subtree: true });
 }
+
 /*** ============ QC LMS Search Assistant ============ ***/
 
     if (MODULES.qcSearch && location.href.includes('CustomersReport')) {
