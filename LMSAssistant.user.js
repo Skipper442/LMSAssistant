@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.61
+// @version      1.7
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -16,7 +16,7 @@
 
     
     const MODULES = {
-        lmsAssistant: true,  // Logic will apply but module is hidden
+        lmsAssistant: true, // Logic will apply but module is hidden
         ibvButton: true,
         emailFilter: true,
         copyPaste: true,
@@ -308,238 +308,312 @@
 
     injectTopMenuPanel();
 
-    /*** ============ LMS Assistant (always enabled, not in menu) ============ ***/
-     if (MODULES.lmsAssistant) {
-        const callHours = { start: '07:00:00', end: '20:00:00' };
-        const tzData = {
-            'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
-            'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
-            'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
-            'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
-            'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
-            'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
-            'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
-            'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
-            'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
-            'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
-            'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
-            'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
-            'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
-            'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
-        };
 
-        function getLocalTime(state) {
-            const currTime = new Date();
-            return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
-        }
+/*** ============ LMS Assistant (always enabled, not in menu) ============ ***/
+if (MODULES.lmsAssistant) {
+    const callHours = { start: '07:00:00', end: '20:00:00' };
+    const tzData = {
+        'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
+        'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
+        'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
+        'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
+        'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
+        'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
+        'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
+        'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
+        'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
+        'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
+        'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
+        'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
+        'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
+        'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
+    };
 
-        function isCallable(state) {
-            const time = getLocalTime(state);
-            return time > callHours.start && time < callHours.end;
-        }
+    function getLocalTime(state) {
+        const currTime = new Date();
+        return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
+    }
+
+    function isCallable(state) {
+        const time = getLocalTime(state);
+        return time > callHours.start && time < callHours.end;
+    }
 
     if (location.href.includes('CustomerDetails.aspx?')) {
-    togglepin();
+        togglepin();
 
-    setTimeout(() => {
-        const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)').textContent.trim().substring(0, 2);
-        const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
-        const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
-        const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
-        if (unsupportedStates.includes(custState)) {
-            alert(`Customer from ${custState}. Reloan not allowed.`);
-        }
-        [cellPhone, homePhone].forEach(phone => {
-            phone.style.fontWeight = '800';
-            phone.style.color = isCallable(custState) ? 'green' : 'red';
-        });
+        const observer = new MutationObserver(() => {
+            const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
+            const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
+            const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
+            const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
+            const headerDiv = document.querySelector("div.Header");
+            const profileTable = document.querySelector("table.ProfileProperties");
 
-        // ========== PWA Button Injection ==========
-        const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
-        if (sendBtn && !document.getElementById("sendPwaBtn")) {
+            if (!custCell || !cellPhone || !homePhone || !sendBtn || !headerDiv || !profileTable) return;
 
-            const loanId = (() => {
-                const headerDiv = document.querySelector("div.Header");
-                const match = headerDiv?.innerText.match(/Loan[#№:]?\s*(\d+)/i);
-                return match ? match[1] : null;
-            })();
-
-            const customerId = (() => {
-                const profileTable = document.querySelector("table.ProfileProperties");
-                if (!profileTable) return null;
-                const rows = profileTable.querySelectorAll("tr");
-                for (let row of rows) {
-                    const tds = row.querySelectorAll("td");
-                    for (let i = 0; i < tds.length; i++) {
-                        if (tds[i].innerText.includes("Customer #")) {
-                            return tds[i + 1]?.innerText.trim() || null;
-                        }
-                    }
-                }
-                return null;
-            })();
-
-            const hasActiveLoan = () => {
-                const headers = Array.from(document.querySelectorAll("div.Header"));
-                return headers.some(header => header.innerText.toUpperCase().includes("ACTIVE"));
-            };
-
-            const hasActiveLoanMentionedInRefinance = () => {
-                const headers = Array.from(document.querySelectorAll("div.Header"));
-                let activeLoanId = null;
-                for (let header of headers) {
-                    const text = header.innerText.toUpperCase();
-                    if (text.includes("ACTIVE")) {
-                        const match = text.match(/LOAN[#№:]?\s*(\d+)/i);
-                        if (match) {
-                            activeLoanId = match[1];
-                            break;
-                        }
-                    }
-                }
-                if (!activeLoanId) return false;
-                const refinanceCell = Array.from(document.querySelectorAll("td")).find(td => td.innerText.includes("Refinance"));
-                return refinanceCell?.innerText.includes(activeLoanId) || false;
-            };
-
-            const shouldAnimate = hasActiveLoan() || hasActiveLoanMentionedInRefinance();
-
-            const style = document.createElement("style");
-            style.textContent = `
-                @keyframes pulse {
-                    0%   { transform: scale(1); }
-                    50%  { transform: scale(1.12); }
-                    100% { transform: scale(1); }
-                }
-                .attention {
-                    animation: pulse 1.5s ease-in-out infinite;
-                }
-            `;
-            document.head.appendChild(style);
-
-            const pwaBtn = document.createElement("input");
-            pwaBtn.type = "button";
-            pwaBtn.id = "sendPwaBtn";
-            pwaBtn.value = "Send PWA";
-            pwaBtn.title = "Send client our mobile app (PWA) instructions";
-
-            if (shouldAnimate) {
-                pwaBtn.classList.add("attention");
+            const custState = custCell.textContent.trim().substring(0, 2);
+            const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
+            if (unsupportedStates.includes(custState)) {
+                alert(`Customer from ${custState}. Reloan not allowed.`);
             }
-
-            Object.assign(pwaBtn.style, {
-                padding: "4px",
-                fontFamily: "Arial, Helvetica, sans-serif",
-                fontWeight: "bold",
-                fontSize: "12px",
-                border: "1px solid #2e9fd8",
-                background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
-                color: "#DFDFDF",
-                cursor: "pointer",
-                marginLeft: "5px",
-                borderSpacing: "0px",
-                outline: "none"
+            [cellPhone, homePhone].forEach(phone => {
+                phone.style.fontWeight = '800';
+                phone.style.color = isCallable(custState) ? 'green' : 'red';
             });
 
-            pwaBtn.onclick = () => {
-                const letterId = 684;
-                const url = `https://apply.creditcube.com/plm.net/customers/popups/PreviewLetter.aspx` +
-                            `?action=send&customerid=${customerId}&letterid=${letterId}&loanid=${loanId}&mode=send`;
-                const iframe = document.createElement("iframe");
-                iframe.style.display = "none";
-                iframe.src = url;
-                document.body.appendChild(iframe);
-                pwaBtn.classList.remove("attention");
-            };
+            // ========== PWA Button Injection ==========
+            if (!document.getElementById("sendPwaBtn")) {
 
-            sendBtn.parentElement.insertBefore(pwaBtn, sendBtn.nextSibling);
-        }
-    }, 1000);
-}
+                const loanId = (() => {
+                    const match = headerDiv?.innerText.match(/Loan[#№:]?\s*(\d+)/i);
+                    return match ? match[1] : null;
+                })();
 
+                const customerId = (() => {
+                    const rows = profileTable.querySelectorAll("tr");
+                    for (let row of rows) {
+                        const tds = row.querySelectorAll("td");
+                        for (let i = 0; i < tds.length; i++) {
+                            if (tds[i].innerText.includes("Customer #")) {
+                                return tds[i + 1]?.innerText.trim() || null;
+                            }
+                        }
+                    }
+                    return null;
+                })();
 
+                const hasActiveLoan = () => {
+                    const headers = Array.from(document.querySelectorAll("div.Header"));
+                    return headers.some(header => header.innerText.toUpperCase().includes("ACTIVE"));
+                };
 
-        if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
-            const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
-            leads.forEach(row => {
-                const cell = row.querySelector('td:nth-child(9)');
-                const state = cell.textContent.trim().substring(0, 2);
-                cell.style.fontWeight = '800';
-                cell.style.color = isCallable(state) ? 'green' : 'red';
-            });
-        }
-    }
+                const hasActiveLoanMentionedInRefinance = () => {
+                    const headers = Array.from(document.querySelectorAll("div.Header"));
+                    let activeLoanId = null;
+                    for (let header of headers) {
+                        const text = header.innerText.toUpperCase();
+                        if (text.includes("ACTIVE")) {
+                            const match = text.match(/LOAN[#№:]?\s*(\d+)/i);
+                            if (match) {
+                                activeLoanId = match[1];
+                                break;
+                            }
+                        }
+                    }
+                    if (!activeLoanId) return false;
+                    const refinanceCell = Array.from(document.querySelectorAll("td")).find(td => td.innerText.includes("Refinance"));
+                    return refinanceCell?.innerText.includes(activeLoanId) || false;
+                };
 
-    /*** ============ Email Category Filter ============ ***/
-    if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
-        const categories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
-        const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
-        const PANEL_ID = 'emailCategoryControlPanel';
+                const shouldAnimate = hasActiveLoan() || hasActiveLoanMentionedInRefinance();
 
-        const createControlPanel = () => {
-            if (document.getElementById(PANEL_ID)) return;
-            const panel = document.createElement('div');
-            panel.id = PANEL_ID;
-            panel.style.marginLeft = '10px';
-            panel.style.display = 'inline-block';
-            const labelText = document.createElement('span');
-            labelText.textContent = "Categories:";
-            labelText.style.marginRight = "10px";
-            panel.appendChild(labelText);
+                const style = document.createElement("style");
+                style.textContent = `
+                    @keyframes pulse {
+                        0%   { transform: scale(1); }
+                        50%  { transform: scale(1.12); }
+                        100% { transform: scale(1); }
+                    }
+                    .attention {
+                        animation: pulse 1.5s ease-in-out infinite;
+                    }
+                `;
+                document.head.appendChild(style);
 
-            categories.forEach(cat => {
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.checked = JSON.parse(localStorage.getItem(`show_${cat}`) || "true");
-                checkbox.style.marginRight = '5px';
-                checkbox.addEventListener('change', () => {
-                    localStorage.setItem(`show_${cat}`, checkbox.checked);
-                    filterSelectOptions();
+                const pwaBtn = document.createElement("input");
+                pwaBtn.type = "button";
+                pwaBtn.id = "sendPwaBtn";
+                pwaBtn.value = "Send PWA";
+                pwaBtn.title = "Send client our mobile app (PWA) instructions";
+
+                if (shouldAnimate) {
+                    pwaBtn.classList.add("attention");
+                }
+
+                Object.assign(pwaBtn.style, {
+                    padding: "4px",
+                    fontFamily: "Arial, Helvetica, sans-serif",
+                    fontWeight: "bold",
+                    fontSize: "12px",
+                    border: "1px solid #2e9fd8",
+                    background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
+                    color: "#DFDFDF",
+                    cursor: "pointer",
+                    marginLeft: "5px",
+                    borderSpacing: "0px",
+                    outline: "none"
                 });
 
-                const label = document.createElement('label');
-                label.style.marginRight = '10px';
-                label.style.cursor = 'pointer';
-                label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(cat));
-                panel.appendChild(label);
-            });
+                pwaBtn.onclick = () => {
+                    const letterId = 684;
+                    const url = `https://apply.creditcube.com/plm.net/customers/popups/PreviewLetter.aspx` +
+                                `?action=send&customerid=${customerId}&letterid=${letterId}&loanid=${loanId}&mode=send`;
+                    const iframe = document.createElement("iframe");
+                    iframe.style.display = "none";
+                    iframe.src = url;
+                    document.body.appendChild(iframe);
+                    pwaBtn.classList.remove("attention");
+                };
 
-            const sendButton = document.querySelector('input[type="submit"][value="Send"]');
-            if (sendButton && sendButton.parentElement) {
-                sendButton.parentElement.insertBefore(panel, sendButton.nextSibling);
+                sendBtn.parentElement.insertBefore(pwaBtn, sendBtn.nextSibling);
             }
-        };
 
-        const filterSelectOptions = () => {
-            const select = document.querySelector('#ctl00_LoansRepeater_Letter_ForEmail_0');
-            if (!select) return;
-            let currentCategory = null;
-            Array.from(select.options).forEach(option => {
-                const text = option.textContent.trim();
-                if (categories.some(cat => text === `-- ${cat} --`)) {
-                    currentCategory = categories.find(cat => text === `-- ${cat} --`);
-                    option.style.display = '';
-                    return;
-                }
-                const isDRS = text.includes("[z3RDParty]");
-                const showCurrentCategory = currentCategory && JSON.parse(localStorage.getItem(`show_${currentCategory}`) || "true");
-                const shouldHide =
-                    unwantedEmails.includes(text) ||
-                    (!isDRS && !showCurrentCategory) ||
-                    (isDRS && !JSON.parse(localStorage.getItem("show_DRS Letters") || "false"));
-                option.style.display = shouldHide ? 'none' : '';
-            });
-        };
+            observer.disconnect();
+        });
 
-        const observer = new MutationObserver(filterSelectOptions);
         observer.observe(document.body, { childList: true, subtree: true });
-
-        window.addEventListener('load', () => setTimeout(() => {
-            createControlPanel();
-            filterSelectOptions();
-        }, 700));
     }
+
+    if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
+        const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
+        leads.forEach(row => {
+            const cell = row.querySelector('td:nth-child(9)');
+            const state = cell.textContent.trim().substring(0, 2);
+            cell.style.fontWeight = '800';
+            cell.style.color = isCallable(state) ? 'green' : 'red';
+        });
+    }
+}
+
+    /*** ============ Email/TXT Category Filter ============ ***/
+
+if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
+    const rawCategories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
+    const renamedCategories = {
+        "Loan Letters": "Support",
+        "Collection Letters": "Collection",
+        "Marketing Letters": "Marketing",
+        "DRS Letters": "DRS"
+    };
+
+    const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
+    const PANEL_ID = 'emailCategoryControlPanel';
+
+    const getSelectedLetterType = () => {
+        const select = document.querySelector('select[id$="LetterAction_0"]');
+        return select?.value || "send";
+    };
+
+    const getLetterSelectId = () => {
+        const type = getSelectedLetterType();
+        switch (type) {
+            case "send": return "#ctl00_LoansRepeater_Letter_ForEmail_0";
+            case "textmessage": return "#ctl00_LoansRepeater_Letter_ForTextMessage_0";
+            default: return null;
+        }
+    };
+
+    const createControlPanel = () => {
+        if (document.getElementById(PANEL_ID)) return;
+
+        const panel = document.createElement('div');
+        panel.id = PANEL_ID;
+        panel.style.marginLeft = '10px';
+        panel.style.display = 'inline-block';
+
+        const labelText = document.createElement('span');
+        labelText.textContent = "Categories:";
+        labelText.style.marginRight = "10px";
+        panel.appendChild(labelText);
+
+        rawCategories.forEach(cat => {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = JSON.parse(localStorage.getItem(`show_${cat}`) || "true");
+            checkbox.style.marginRight = '5px';
+            checkbox.dataset.original = cat;
+            checkbox.addEventListener('change', () => {
+                localStorage.setItem(`show_${cat}`, checkbox.checked);
+                filterSelectOptions();
+            });
+
+            const label = document.createElement('label');
+            label.style.marginRight = '10px';
+            label.style.cursor = 'pointer';
+            label.dataset.category = cat;
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(renamedCategories[cat] || cat));
+            panel.appendChild(label);
+        });
+
+        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
+        if (sendButton && sendButton.parentElement) {
+            sendButton.parentElement.insertBefore(panel, sendButton.nextSibling?.nextSibling || null);
+        }
+    };
+
+    const filterSelectOptions = () => {
+        const selectId = getLetterSelectId();
+        if (!selectId) return;
+
+        const select = document.querySelector(selectId);
+        if (!select) return;
+
+        const letterType = getSelectedLetterType();
+
+        const marketingLabel = [...document.querySelectorAll(`#${PANEL_ID} label`)].find(lbl => lbl.dataset.category === "Marketing Letters");
+        if (marketingLabel) {
+            marketingLabel.style.display = (letterType === "textmessage") ? "none" : "inline-block";
+        }
+
+        let currentCategory = null;
+        Array.from(select.options).forEach(option => {
+            const text = option.textContent.trim();
+
+            if (rawCategories.some(cat => text === `-- ${cat} --`)) {
+                currentCategory = rawCategories.find(cat => text === `-- ${cat} --`);
+                option.style.display = '';
+                return;
+            }
+
+            let show = true;
+            if (letterType === "send") {
+                const isDRS = text.includes("[z3RDParty]");
+                const showCurrent = currentCategory && JSON.parse(localStorage.getItem(`show_${currentCategory}`) || "true");
+                show = !unwantedEmails.includes(text) && ((showCurrent && !isDRS) || (isDRS && JSON.parse(localStorage.getItem("show_DRS Letters") || "false")));
+            } else if (letterType === "textmessage") {
+                const isSupport = text.includes("(Sup)");
+                const isCollection = text.includes("(Coll)");
+                const isDRS = text.includes("{zTXT}") || text.includes("(3RDParty)");
+
+                const showSupport = JSON.parse(localStorage.getItem("show_Loan Letters") || "true");
+                const showCollection = JSON.parse(localStorage.getItem("show_Collection Letters") || "true");
+                const showDRS = JSON.parse(localStorage.getItem("show_DRS Letters") || "true");
+
+                show =
+                    (isSupport && showSupport) ||
+                    (isCollection && showCollection && !isDRS) ||
+                    (isDRS && showDRS);
+            }
+            option.style.display = show ? '' : 'none';
+        });
+    };
+
+    const waitForSendButton = () => {
+        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
+        if (!sendButton) {
+            requestAnimationFrame(waitForSendButton);
+            return;
+        }
+
+        createControlPanel();
+        filterSelectOptions();
+
+        const letterTypeSelector = document.querySelector('select[id$="LetterAction_0"]');
+        if (letterTypeSelector) {
+            letterTypeSelector.addEventListener("change", () => {
+                setTimeout(() => {
+                    filterSelectOptions();
+                }, 50);
+            });
+        }
+    };
+
+    const observer = new MutationObserver(waitForSendButton);
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
 /*** ============ IBV Button Injector ============ ***/
 if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
     const getLoginName = (id) => {
