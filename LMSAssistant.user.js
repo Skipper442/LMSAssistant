@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.91
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
