@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      1.9
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
@@ -396,13 +396,15 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         manageBtn.innerHTML = '📌';
         manageBtn.title = 'Favorites';
         manageBtn.style.marginRight = "10px";
-       manageBtn.style.background = "transparent";
+manageBtn.style.background = "transparent";
 manageBtn.style.border = "none";
 manageBtn.style.padding = "0";
 manageBtn.style.fontSize = "18px";
 manageBtn.style.cursor = "pointer";
-manageBtn.style.color = "inherit"; // успадковує текстовий колір з LMS
-
+manageBtn.style.color = "inherit";
+        manageBtn.style.fontWeight = "bold";
+        manageBtn.style.border = "none";
+        manageBtn.style.padding = "4px 8px";
         manageBtn.style.cursor = "pointer";
         manageBtn.onclick = (e) => {
             e.preventDefault();
@@ -412,7 +414,7 @@ manageBtn.style.color = "inherit"; // успадковує текстовий к
         const pinnedToggle = document.createElement("label");
         pinnedToggle.style.marginRight = "10px";
         const pinnedChecked = JSON.parse(localStorage.getItem("show_only_pinned") || "false");
-        pinnedToggle.innerHTML = `<input type="checkbox" id="showOnlyPinned" style="margin-right:5px;" ${pinnedChecked ? "checked" : ""}>Show only pinned`;
+        pinnedToggle.innerHTML = `<input type="checkbox" id="showOnlyPinned" style="margin-right:5px;" ${pinnedChecked ? "checked" : ""}>📌 Show only pinned`;
 
         panel.appendChild(manageBtn);
         panel.appendChild(labelText);
@@ -645,6 +647,7 @@ manageBtn.style.color = "inherit"; // успадковує текстовий к
     const observer = new MutationObserver(waitForSendButton);
     observer.observe(document.body, { childList: true, subtree: true });
 }
+
 /*** ============ Copy/Paste LMS (Stable with Observer) ============ ***/
 
 if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
