@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.9
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
@@ -351,7 +351,6 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         "Marketing Letters": "Marketing",
         "DRS Letters": "DRS"
     };
-
     const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
     const PANEL_ID = 'emailCategoryControlPanel';
 
@@ -369,8 +368,19 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         }
     };
 
+    const isPinned = (text, type) => {
+        const key = `pinned_${type}`;
+        const list = JSON.parse(localStorage.getItem(key) || "[]");
+        return list.includes(text);
+    };
+
     const createControlPanel = () => {
         if (document.getElementById(PANEL_ID)) return;
+
+        const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
+        const previewBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionPreview_"]');
+
+        if (!sendBtn || !previewBtn) return;
 
         const panel = document.createElement('div');
         panel.id = PANEL_ID;
@@ -380,6 +390,33 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         const labelText = document.createElement('span');
         labelText.textContent = "Categories:";
         labelText.style.marginRight = "10px";
+
+        const manageBtn = document.createElement('button');
+        manageBtn.type = 'button';
+        manageBtn.innerHTML = '📌';
+        manageBtn.title = 'Favorites';
+        manageBtn.style.marginRight = "10px";
+manageBtn.style.background = "transparent";
+manageBtn.style.border = "none";
+manageBtn.style.padding = "0";
+manageBtn.style.fontSize = "18px";
+manageBtn.style.cursor = "pointer";
+manageBtn.style.color = "inherit";
+        manageBtn.style.fontWeight = "bold";
+        manageBtn.style.border = "none";
+        manageBtn.style.padding = "4px 8px";
+        manageBtn.style.cursor = "pointer";
+        manageBtn.onclick = (e) => {
+            e.preventDefault();
+            showFavoritesPopup();
+        };
+
+        const pinnedToggle = document.createElement("label");
+        pinnedToggle.style.marginRight = "10px";
+        const pinnedChecked = JSON.parse(localStorage.getItem("show_only_pinned") || "false");
+        pinnedToggle.innerHTML = `<input type="checkbox" id="showOnlyPinned" style="margin-right:5px;" ${pinnedChecked ? "checked" : ""}>📌 Show only pinned`;
+
+        panel.appendChild(manageBtn);
         panel.appendChild(labelText);
 
         rawCategories.forEach(cat => {
@@ -402,10 +439,14 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
             panel.appendChild(label);
         });
 
-        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
-        if (sendButton && sendButton.parentElement) {
-            sendButton.parentElement.insertBefore(panel, sendButton.nextSibling);
-        }
+        panel.appendChild(pinnedToggle);
+
+        sendBtn.parentElement.insertBefore(panel, sendBtn.nextSibling);
+
+        document.querySelector("#showOnlyPinned").addEventListener("change", (e) => {
+            localStorage.setItem("show_only_pinned", e.target.checked);
+            filterSelectOptions();
+        });
     };
 
     const filterSelectOptions = () => {
@@ -416,6 +457,7 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         if (!select) return;
 
         const letterType = getSelectedLetterType();
+        const showOnlyPinned = JSON.parse(localStorage.getItem("show_only_pinned") || "false");
 
         const marketingLabel = [...document.querySelectorAll(`#${PANEL_ID} label`)].find(lbl => lbl.dataset.category === "Marketing Letters");
         if (marketingLabel) {
@@ -424,11 +466,15 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
 
         let currentCategory = null;
         Array.from(select.options).forEach(option => {
-            const text = option.textContent.trim();
+            if (!option.dataset.originalText) {
+                option.dataset.originalText = option.textContent.trim().replace("📌", "").trim();
+            }
+            const text = option.dataset.originalText;
+            const isPinnedNow = isPinned(text, letterType);
 
             if (rawCategories.some(cat => text === `-- ${cat} --`)) {
                 currentCategory = rawCategories.find(cat => text === `-- ${cat} --`);
-                option.style.display = '';
+                option.style.display = showOnlyPinned ? 'none' : '';
                 return;
             }
 
@@ -451,8 +497,131 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
                     (isCollection && showCollection && !isDRS) ||
                     (isDRS && showDRS);
             }
+
+            if (showOnlyPinned) {
+                show = isPinnedNow;
+            }
+
             option.style.display = show ? '' : 'none';
+            option.textContent = isPinnedNow ? `${text} 📌` : text;
         });
+    };
+
+    const showFavoritesPopup = () => {
+        const letterType = getSelectedLetterType();
+        const selectId = getLetterSelectId();
+        const select = document.querySelector(selectId);
+        if (!select) return;
+
+        const overlay = document.createElement("div");
+        overlay.style.position = "fixed";
+        overlay.style.top = "0";
+        overlay.style.left = "0";
+        overlay.style.width = "100%";
+        overlay.style.height = "100%";
+        overlay.style.background = "rgba(0,0,0,0.2)";
+        overlay.style.zIndex = "99999";
+
+        const popup = document.createElement("div");
+        popup.style.position = "fixed";
+        popup.style.top = "20%";
+        popup.style.left = "50%";
+        popup.style.transform = "translateX(-50%)";
+        popup.style.background = "#fff";
+        popup.style.border = "2px solid #2e9fd8";
+        popup.style.padding = "20px";
+        popup.style.zIndex = "100000";
+        popup.style.boxShadow = "0 5px 20px rgba(0,0,0,0.5)";
+        popup.style.maxHeight = "400px";
+        popup.style.overflowY = "auto";
+        popup.onclick = e => e.stopPropagation();
+
+        const title = document.createElement("h3");
+        title.textContent = `📌 Manage favorites (${letterType === "send" ? "Email" : "TXT"})`;
+        title.style.marginBottom = "15px";
+        popup.appendChild(title);
+
+        const selectAllBtn = document.createElement("button");
+        selectAllBtn.textContent = "Select All";
+        selectAllBtn.style.marginBottom = "10px";
+        selectAllBtn.style.background = "#2e9fd8";
+        selectAllBtn.style.color = "#fff";
+        selectAllBtn.style.border = "none";
+        selectAllBtn.style.padding = "4px 10px";
+        selectAllBtn.style.cursor = "pointer";
+        selectAllBtn.onclick = () => {
+            const checkboxes = popup.querySelectorAll("input[type='checkbox']");
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            checkboxes.forEach(cb => { cb.checked = !allChecked; });
+        };
+        popup.appendChild(selectAllBtn);
+
+        const pinnedKey = `pinned_${letterType}`;
+        const currentPinned = new Set(JSON.parse(localStorage.getItem(pinnedKey) || "[]"));
+
+        Array.from(select.options).forEach(option => {
+            const text = (option.dataset.originalText || option.textContent.trim().replace("📌", "").trim());
+            if (!text || text.startsWith("--")) return;
+
+            const label = document.createElement("label");
+            label.style.display = "block";
+            label.style.marginBottom = "4px";
+
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = currentPinned.has(text);
+            checkbox.style.marginRight = "6px";
+
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(text));
+            popup.appendChild(label);
+        });
+
+        const btnContainer = document.createElement("div");
+        btnContainer.style.marginTop = "15px";
+        btnContainer.style.textAlign = "right";
+
+        const saveBtn = document.createElement("button");
+        saveBtn.textContent = "Save";
+        saveBtn.style.marginRight = "10px";
+        saveBtn.style.padding = "5px 12px";
+        saveBtn.style.border = "none";
+        saveBtn.style.background = "#2e9fd8";
+        saveBtn.style.color = "#fff";
+        saveBtn.style.cursor = "pointer";
+        saveBtn.onclick = () => {
+            const checkboxes = popup.querySelectorAll("input[type='checkbox']");
+            const newPinned = [];
+
+            checkboxes.forEach(cb => {
+                const label = cb.parentElement;
+                const text = label.textContent.trim();
+                if (cb.checked) {
+                    newPinned.push(text);
+                }
+            });
+
+            localStorage.setItem(pinnedKey, JSON.stringify(newPinned));
+            filterSelectOptions();
+            overlay.remove();
+        };
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "Close";
+        closeBtn.style.padding = "5px 12px";
+        closeBtn.style.border = "none";
+        closeBtn.style.background = "#2e9fd8";
+        closeBtn.style.color = "#fff";
+        closeBtn.style.cursor = "pointer";
+        closeBtn.onclick = () => overlay.remove();
+
+        btnContainer.appendChild(saveBtn);
+        btnContainer.appendChild(closeBtn);
+        popup.appendChild(btnContainer);
+
+        overlay.appendChild(popup);
+        overlay.onclick = () => overlay.remove();
+        document.body.appendChild(overlay);
     };
 
     const waitForSendButton = () => {
@@ -478,6 +647,7 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
     const observer = new MutationObserver(waitForSendButton);
     observer.observe(document.body, { childList: true, subtree: true });
 }
+
 /*** ============ Copy/Paste LMS (Stable with Observer) ============ ***/
 
 if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
