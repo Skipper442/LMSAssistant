@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.7
+// @version      1.8
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -339,6 +339,58 @@ if (MODULES.lmsAssistant) {
         return time > callHours.start && time < callHours.end;
     }
 
+    function showStyledPopup(title, items, isError = false) {
+        const box = document.createElement("div");
+
+        const header = document.createElement("h3");
+        header.innerHTML = isError ? title : `<span style="color: red;">📌</span> ${title}`;
+        header.style.marginBottom = "10px";
+
+        const text = document.createElement("div");
+        text.innerHTML = isError ? items.join("<br>") : items.map(txt => `• ${txt}`).join("<br>");
+        text.style.textAlign = "left";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "OK";
+        Object.assign(closeBtn.style, {
+            marginTop: "10px",
+            padding: "4px 12px",
+            border: "1px solid #a27c33",
+            borderRadius: "4px",
+            background: "#5c4400",
+            backgroundImage: "url(Images/global-button-back.png)",
+            backgroundRepeat: "repeat-x",
+            color: "#fff",
+            fontWeight: "bold",
+            cursor: "pointer",
+            fontFamily: "Arial, Helvetica, sans-serif"
+        });
+        closeBtn.onclick = () => box.remove();
+
+        Object.assign(box.style, {
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#fff3cd",
+            color: "#5c4400",
+            padding: "15px 25px",
+            borderRadius: "10px",
+            fontSize: "15px",
+            fontFamily: "Segoe UI, sans-serif",
+            fontWeight: "500",
+            zIndex: "99999",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            maxWidth: "90%",
+            textAlign: "center"
+        });
+
+        box.appendChild(header);
+        box.appendChild(text);
+        box.appendChild(closeBtn);
+        document.body.appendChild(box);
+    }
+
     if (location.href.includes('CustomerDetails.aspx?')) {
         togglepin();
 
@@ -355,16 +407,22 @@ if (MODULES.lmsAssistant) {
             const custState = custCell.textContent.trim().substring(0, 2);
             const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
             if (unsupportedStates.includes(custState)) {
-                alert(`Customer from ${custState}. Reloan not allowed.`);
+                showStyledPopup("UNSUPPORTED STATE", [`Customer from ${custState}. Reloan not allowed.`], true);
             }
+
             [cellPhone, homePhone].forEach(phone => {
                 phone.style.fontWeight = '800';
                 phone.style.color = isCallable(custState) ? 'green' : 'red';
             });
 
-            // ========== PWA Button Injection ==========
-            if (!document.getElementById("sendPwaBtn")) {
+            // ========== Follow-Up Reminder ==========
+            const followUps = Array.from(document.querySelectorAll(".tr-followup td.td1")).map(td => td.innerText.trim()).filter(txt => txt.length > 0);
+            if (followUps.length > 0) {
+                showStyledPopup("Follow-Up Reminder", followUps);
+            }
 
+            // ========== PWA Button ==========
+            if (!document.getElementById("sendPwaBtn")) {
                 const loanId = (() => {
                     const match = headerDiv?.innerText.match(/Loan[#№:]?\s*(\d+)/i);
                     return match ? match[1] : null;
@@ -475,6 +533,9 @@ if (MODULES.lmsAssistant) {
         });
     }
 }
+
+
+
 
     /*** ============ Email/TXT Category Filter ============ ***/
 
