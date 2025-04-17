@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.8
+// @version      1.9
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -14,14 +14,91 @@
 (function () {
     'use strict';
 
-    
+    // ===== Version Changelog Popup =====
+    const CURRENT_VERSION = "1.9";
+
+    const changelog = [
+        "🆕 Added Remark Filter module – keeps only 2 key loan remarks",
+        "📞 Integrated Cancel Voice Bot Call button (next to Change Pending)",
+        "📌 Added Follow-Up Reminder (appears as a yellow pop-up at the top)",
+        "🚫 Unsupported States Reminder redesign (appears as a yellow pop-up at the top)",
+        "🐞 Fixed DOM conflicts and button injection issues",
+        "🎯 Adjusted element positioning for better stability"
+    ];
+
+    const savedVersion = localStorage.getItem("lms_assistant_version");
+    if (savedVersion !== CURRENT_VERSION) {
+        showVersionPopup(CURRENT_VERSION, changelog);
+        localStorage.setItem("lms_assistant_version", CURRENT_VERSION);
+    }
+
+    function showVersionPopup(version, changes) {
+        const box = document.createElement("div");
+
+        const header = document.createElement("h3");
+        header.textContent = `🛠 LMS Assistant PRO — updated to version ${version}`;
+        header.style.marginBottom = "10px";
+
+        const list = document.createElement("ul");
+        list.style.textAlign = "left";
+        changes.forEach(change => {
+            const li = document.createElement("li");
+            li.textContent = change;
+            list.appendChild(li);
+        });
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "OK";
+        Object.assign(closeBtn.style, {
+            marginTop: "15px",
+            padding: "6px 14px",
+            border: "1px solid #a27c33",
+            borderRadius: "4px",
+            background: "#5c4400",
+            backgroundImage: "url(Images/global-button-back.png)",
+            backgroundRepeat: "repeat-x",
+            color: "#fff",
+            fontWeight: "bold",
+            cursor: "pointer",
+            fontFamily: "Arial, Helvetica, sans-serif"
+        });
+        closeBtn.onclick = () => box.remove();
+
+        Object.assign(box.style, {
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#fff3cd",
+            color: "#5c4400",
+            padding: "20px 30px",
+            borderRadius: "10px",
+            fontSize: "14px",
+            fontFamily: "Segoe UI, sans-serif",
+            fontWeight: "500",
+            zIndex: "99999",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            maxWidth: "90%",
+            textAlign: "center"
+        });
+
+        box.appendChild(header);
+        box.appendChild(list);
+        box.appendChild(closeBtn);
+        document.body.appendChild(box);
+    }
+
+    // ===== End Version Check =====
+
     const MODULES = {
         lmsAssistant: true, // Logic will apply but module is hidden
         ibvButton: true,
         emailFilter: true,
         copyPaste: true,
         qcSearch: true,
-        overpaidCheck: true
+        overpaidCheck: true,
+        remarkFilter: true
+
     };
 
     const MODULE_LABELS = {
@@ -30,7 +107,9 @@
         emailFilter: 'Email Filter',
         copyPaste: 'Copy/Paste',
         qcSearch: 'QC Search',
-        overpaidCheck: 'Overpaid Check'
+        overpaidCheck: 'Overpaid Check',
+        remarkFilter: 'Remark Filter'
+
     };
 
       const MODULE_DESCRIPTIONS = {
@@ -39,7 +118,9 @@
         emailFilter: "Filters the list of email templates",
         copyPaste: "Adds phone copy button",
         qcSearch: "QC Search — quick phone-based lookup",
-        overpaidCheck: "Checks overpaid status and options for potential refinance"
+        overpaidCheck: "Checks overpaid status and options for potential refinance",
+        remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones"
+
     };
 
     
@@ -339,15 +420,15 @@ if (MODULES.lmsAssistant) {
         return time > callHours.start && time < callHours.end;
     }
 
-    function showStyledPopup(title, items, isError = false) {
+    function showStyledPopup(title, items, noIcon = false) {
         const box = document.createElement("div");
 
         const header = document.createElement("h3");
-        header.innerHTML = isError ? title : `<span style="color: red;">📌</span> ${title}`;
+        header.innerHTML = noIcon ? `${title}` : `<span style="color: red;">📌</span> ${title}`;
         header.style.marginBottom = "10px";
 
         const text = document.createElement("div");
-        text.innerHTML = isError ? items.join("<br>") : items.map(txt => `• ${txt}`).join("<br>");
+        text.innerHTML = items.map(txt => `• ${txt}`).join("<br>");
         text.style.textAlign = "left";
 
         const closeBtn = document.createElement("button");
@@ -399,6 +480,9 @@ if (MODULES.lmsAssistant) {
             const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
             const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
             const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
+            const changeBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_ChangePendingDetails_"]');
+            const statusElem = document.querySelector('#ctl00_LoansRepeater_Span_Loan_Status_0');
+            const container = statusElem?.closest('td');
             const headerDiv = document.querySelector("div.Header");
             const profileTable = document.querySelector("table.ProfileProperties");
 
@@ -407,7 +491,7 @@ if (MODULES.lmsAssistant) {
             const custState = custCell.textContent.trim().substring(0, 2);
             const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
             if (unsupportedStates.includes(custState)) {
-                showStyledPopup("UNSUPPORTED STATE", [`Customer from ${custState}. Reloan not allowed.`], true);
+                showStyledPopup("Unsupported State", [`Customer from ${custState}. Reloan not allowed.`], true);
             }
 
             [cellPhone, homePhone].forEach(phone => {
@@ -415,19 +499,13 @@ if (MODULES.lmsAssistant) {
                 phone.style.color = isCallable(custState) ? 'green' : 'red';
             });
 
-            // ========== Follow-Up Reminder ==========
-            const followUps = Array.from(document.querySelectorAll(".tr-followup td.td1")).map(td => td.innerText.trim()).filter(txt => txt.length > 0);
+            const followUps = Array.from(document.querySelectorAll(".tr-followup td.td1")).map(td => td.innerText.trim());
             if (followUps.length > 0) {
                 showStyledPopup("Follow-Up Reminder", followUps);
             }
 
-            // ========== PWA Button ==========
             if (!document.getElementById("sendPwaBtn")) {
-                const loanId = (() => {
-                    const match = headerDiv?.innerText.match(/Loan[#№:]?\s*(\d+)/i);
-                    return match ? match[1] : null;
-                })();
-
+                const loanId = headerDiv?.innerText.match(/Loan[#№:]?\s*(\d+)/i)?.[1];
                 const customerId = (() => {
                     const rows = profileTable.querySelectorAll("tr");
                     for (let row of rows) {
@@ -498,15 +576,12 @@ if (MODULES.lmsAssistant) {
                     background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
                     color: "#DFDFDF",
                     cursor: "pointer",
-                    marginLeft: "5px",
-                    borderSpacing: "0px",
-                    outline: "none"
+                    marginLeft: "5px"
                 });
 
                 pwaBtn.onclick = () => {
                     const letterId = 684;
-                    const url = `https://apply.creditcube.com/plm.net/customers/popups/PreviewLetter.aspx` +
-                                `?action=send&customerid=${customerId}&letterid=${letterId}&loanid=${loanId}&mode=send`;
+                    const url = `https://apply.creditcube.com/plm.net/customers/popups/PreviewLetter.aspx?action=send&customerid=${customerId}&letterid=${letterId}&loanid=${loanId}&mode=send`;
                     const iframe = document.createElement("iframe");
                     iframe.style.display = "none";
                     iframe.src = url;
@@ -515,6 +590,75 @@ if (MODULES.lmsAssistant) {
                 };
 
                 sendBtn.parentElement.insertBefore(pwaBtn, sendBtn.nextSibling);
+            }
+
+            // Cancel Voice Bot Call button
+            const statusText = container?.innerText || '';
+            if (statusText.includes("AA Call In Progress") && changeBtn && !document.getElementById("cancelVoiceBtn")) {
+                const [, loanId] = changeBtn.id.split("_").reverse();
+                const cancelBtn = document.createElement("input");
+                cancelBtn.type = "button";
+                cancelBtn.id = "cancelVoiceBtn";
+                cancelBtn.value = "Cancel Voice Bot Call";
+                Object.assign(cancelBtn.style, {
+                    marginLeft: "5px",
+                    padding: "4px 8px",
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    fontFamily: "Arial, Helvetica, sans-serif",
+                    background: "#f33",
+                    color: "#fff",
+                    border: "1px solid #a00",
+                    cursor: "pointer"
+                });
+
+                cancelBtn.onclick = () => {
+                    if (!confirm("Are you sure you want to cancel voice bot call?")) return;
+
+                    const style = document.createElement('style');
+                    style.innerHTML = `
+                        .loader-container {
+                            position: fixed;
+                            top: 0; left: 0;
+                            width: 100%; height: 100%;
+                            background-color: rgba(255,255,255,0.7);
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            z-index: 9999;
+                        }
+                        .loader {
+                            border: 5px solid #f3f3f3;
+                            border-top: 5px solid #3498db;
+                            border-radius: 50%;
+                            width: 50px;
+                            height: 50px;
+                            animation: spin 2s linear infinite;
+                        }
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
+                    `;
+                    document.head.appendChild(style);
+
+                    const loaderContainer = document.createElement("div");
+                    loaderContainer.className = "loader-container";
+                    const loader = document.createElement("div");
+                    loader.className = "loader";
+                    loaderContainer.appendChild(loader);
+                    document.body.appendChild(loaderContainer);
+
+                    const win = window.open(`https://ibv.creditsense.ai/cancel-voice-bot-call?layout=embedded&loanId=${loanId}`, "_blank");
+                    const timer = setInterval(() => {
+                        if (win.closed) {
+                            clearInterval(timer);
+                            location.reload();
+                        }
+                    }, 100);
+                };
+
+                changeBtn.parentElement.insertBefore(cancelBtn, changeBtn.nextSibling);
             }
 
             observer.disconnect();
@@ -533,6 +677,8 @@ if (MODULES.lmsAssistant) {
         });
     }
 }
+
+
 
 
 
@@ -836,6 +982,33 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
         const element = getElement('#maincontent_Td_CityHeader');
         if (element) element.textContent = 'Quick Search';
     }
+
+/*** ============ Remark Filter ============ ***/
+if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
+    const waitForRemarkBlock = () => {
+        const remarkDiv = document.querySelector('[id^="ctl00_LoansRepeater_Div_ApprovalIssues_"]');
+        if (!remarkDiv) {
+            requestAnimationFrame(waitForRemarkBlock);
+            return;
+        }
+
+        const allowedRemarks = [
+            "Bank Account Verification missing",
+            "Customer Signature missing"
+        ];
+
+        const listItems = remarkDiv.querySelectorAll("ul li");
+        listItems.forEach(li => {
+            const text = li.textContent.trim();
+            if (!allowedRemarks.includes(text)) {
+                li.style.display = "none";
+            }
+        });
+    };
+
+    const observer = new MutationObserver(waitForRemarkBlock);
+    observer.observe(document.body, { childList: true, subtree: true });
+}
 
     /*** ============ Overpaid Check module ============ ***/
     if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
