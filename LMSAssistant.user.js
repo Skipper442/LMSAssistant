@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.99
+// @version      2.0
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -13,11 +13,12 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.99";
+    const CURRENT_VERSION = "2.0";
 
-  const changelog = [
-    "🐛 Hotfix: Added another 2 remarks"
+ const changelog = [
+    "🔁 Remark Filter logic reversed — now hides only known unimportant remarks and keeps everything else"
 ];
+
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
     if (savedVersion !== CURRENT_VERSION) {
@@ -996,24 +997,23 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
             return;
         }
 
-        const allowedRemarks = [
-            "Bank Account Verification missing",
-            "Customer Signature missing",
-            "Origination Date cannot be in the past for ACH loans",
-            "Please update Loan Transfer option for this loan",
-            "Multiple active loans not allowed in business rules"
-        ];
-
-        const allowedStartsWith = [
-            "Origination Date must be"
+        const hiddenPhrases = [
+            'Loan remark "Personal Info Verification"',
+            'Loan remark "Bank account # and ABA verified"',
+            'Loan remark "T&C Read and Agreed"',
+            'Loan remark "Minimum Amount The Customer Agrees To"',
+            'Loan remark "Final Approved Amount"',
+            'Loan remark "All Accounts checked on DL"',
+            'Loan remark "Loan Type Matches Cust Loyalty Status"',
+            'Loan remark "Loan Amount Fixed"',
+            'Loan remark "Promotion Code"'
         ];
 
         const listItems = remarkDiv.querySelectorAll("ul li");
         listItems.forEach(li => {
             const text = li.textContent.trim();
-            const isAllowed = allowedRemarks.includes(text) ||
-                              allowedStartsWith.some(prefix => text.startsWith(prefix));
-            if (!isAllowed) {
+            const shouldHide = hiddenPhrases.some(phrase => text.includes(phrase));
+            if (shouldHide) {
                 li.style.display = "none";
             }
         });
@@ -1022,6 +1022,7 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
     const observer = new MutationObserver(waitForRemarkBlock);
     observer.observe(document.body, { childList: true, subtree: true });
 }
+
 
 /*** ============ Overpaid check module ============ ***/
 
