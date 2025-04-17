@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.97
+// @version      1.98
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -13,13 +13,11 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.97";
+    const CURRENT_VERSION = "1.98";
 
-   const changelog = [
-    "🐛 Hotfix: Added support for 3rd key remark — 'Origination Date cannot be in the past for ACH loans'"
+  const changelog = [
+    "🐛 Hotfix: Remark Filter now also allows 'Origination Date must be...' messages for ACH loans"
 ];
-
-
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
     if (savedVersion !== CURRENT_VERSION) {
@@ -1004,10 +1002,16 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
             "Origination Date cannot be in the past for ACH loans"
         ];
 
+        const allowedStartsWith = [
+            "Origination Date must be"
+        ];
+
         const listItems = remarkDiv.querySelectorAll("ul li");
         listItems.forEach(li => {
             const text = li.textContent.trim();
-            if (!allowedRemarks.includes(text)) {
+            const isAllowed = allowedRemarks.includes(text) ||
+                              allowedStartsWith.some(prefix => text.startsWith(prefix));
+            if (!isAllowed) {
                 li.style.display = "none";
             }
         });
@@ -1016,6 +1020,7 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
     const observer = new MutationObserver(waitForRemarkBlock);
     observer.observe(document.body, { childList: true, subtree: true });
 }
+
 
 /*** ============ Overpaid check module ============ ***/
 
