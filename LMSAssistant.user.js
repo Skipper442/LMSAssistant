@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.96
+// @version      1.97
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -13,14 +13,12 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.96";
+    const CURRENT_VERSION = "1.97";
 
-    const changelog = [
-    "🆕 New Remark Filter module – hides all loan remarks except 2 key ones",
-    "⚙️ LMS Assistant module optimized – faster and more reliable",
-    "🚫 Unsupported States Reminder redesigned – now shows as yellow pop-up at the top",
-    "🎯 Element positioning improved – smoother layout and button injection"
+   const changelog = [
+    "🐛 Hotfix: Added support for 3rd key remark — 'Origination Date cannot be in the past for ACH loans'"
 ];
+
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -1002,7 +1000,8 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
 
         const allowedRemarks = [
             "Bank Account Verification missing",
-            "Customer Signature missing"
+            "Customer Signature missing",
+            "Origination Date cannot be in the past for ACH loans"
         ];
 
         const listItems = remarkDiv.querySelectorAll("ul li");
@@ -1017,6 +1016,7 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
     const observer = new MutationObserver(waitForRemarkBlock);
     observer.observe(document.body, { childList: true, subtree: true });
 }
+
 /*** ============ Overpaid check module ============ ***/
 
 if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
