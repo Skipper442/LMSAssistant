@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LMS Assistant PRO (GitHub)
+// @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.94
+// @version      1.96
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -12,7 +12,80 @@
 
 (function () {
     'use strict';
+// ===== Version Changelog Popup =====
+    const CURRENT_VERSION = "1.96";
 
+    const changelog = [
+    "🆕 New Remark Filter module – hides all loan remarks except 2 key ones",
+    "⚙️ LMS Assistant module optimized – faster and more reliable",
+    "🚫 Unsupported States Reminder redesigned – now shows as yellow pop-up at the top",
+    "🎯 Element positioning improved – smoother layout and button injection"
+];
+
+
+    const savedVersion = localStorage.getItem("lms_assistant_version");
+    if (savedVersion !== CURRENT_VERSION) {
+        showVersionPopup(CURRENT_VERSION, changelog);
+        localStorage.setItem("lms_assistant_version", CURRENT_VERSION);
+    }
+
+    function showVersionPopup(version, changes) {
+        const box = document.createElement("div");
+
+        const header = document.createElement("h3");
+        header.textContent = `🛠 LMS Assistant PRO (UW) — updated to version ${version}`;
+        header.style.marginBottom = "10px";
+
+        const list = document.createElement("ul");
+        list.style.textAlign = "left";
+        changes.forEach(change => {
+            const li = document.createElement("li");
+            li.textContent = change;
+            list.appendChild(li);
+        });
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "OK";
+        Object.assign(closeBtn.style, {
+            marginTop: "15px",
+            padding: "6px 14px",
+            border: "1px solid #a27c33",
+            borderRadius: "4px",
+            background: "#5c4400",
+            backgroundImage: "url(Images/global-button-back.png)",
+            backgroundRepeat: "repeat-x",
+            color: "#fff",
+            fontWeight: "bold",
+            cursor: "pointer",
+            fontFamily: "Arial, Helvetica, sans-serif"
+        });
+        closeBtn.onclick = () => box.remove();
+
+        Object.assign(box.style, {
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#fff3cd",
+            color: "#5c4400",
+            padding: "20px 30px",
+            borderRadius: "10px",
+            fontSize: "14px",
+            fontFamily: "Segoe UI, sans-serif",
+            fontWeight: "500",
+            zIndex: "99999",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            maxWidth: "90%",
+            textAlign: "center"
+        });
+
+        box.appendChild(header);
+        box.appendChild(list);
+        box.appendChild(closeBtn);
+        document.body.appendChild(box);
+    }
+
+    // ===== End Version Check =====
 const MODULES = {
     lmsAssistant: true,
     ibvButton: true,
@@ -21,7 +94,8 @@ const MODULES = {
     copyPaste: true,
     qcSearch: true,
     notifications: true,
-    overpaidCheck: true
+    overpaidCheck: true,
+    remarkFilter: true
 };
 
 const MODULE_LABELS = {
@@ -32,7 +106,8 @@ const MODULE_LABELS = {
     copyPaste: 'Copy/Paste',
     qcSearch: 'QC Search',
     notifications: 'Notifications Sound BETA',
-    overpaidCheck: 'Overpaid Check'
+    overpaidCheck: 'Overpaid Check',
+    remarkFilter: 'Remark Filter'
 };
 
 
@@ -43,7 +118,9 @@ const MODULE_DESCRIPTIONS = {
   toggleRemarks: "Adds a 'Toggle All Remarks' button",
   copyPaste: "Adds phone/email copy buttons",
   qcSearch: "QC Search — quick phone-based lookup",
-  notifications: "Enables sound and notifications for the tab"
+  notifications: "Enables sound and notifications for the tab",
+  overpaidCheck: "Checks overpaid status and options for potential refinance",
+  remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones"
 };
 
 
@@ -74,7 +151,7 @@ function injectTopMenuPanel() {
     
     const newMenuItem = document.createElement('td');
     newMenuItem.id = "TopMenu-menuItemLMS";
-    newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO&nbsp;';
+    newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO (UW)&nbsp;';
     Object.assign(newMenuItem.style, {
         color: 'white',
         cursor: 'pointer',
@@ -326,65 +403,126 @@ helpMenuItem.parentNode.insertBefore(newMenuItem, helpMenuItem.nextSibling);
 injectTopMenuPanel();
 
 
+/*** ============ LMS Assistant (always enabled, not in menu) ============ ***/
+if (MODULES.lmsAssistant) {
+    const callHours = { start: '07:00:00', end: '20:00:00' };
+    const tzData = {
+        'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
+        'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
+        'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
+        'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
+        'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
+        'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
+        'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
+        'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
+        'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
+        'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
+        'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
+        'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
+        'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
+        'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
+    };
 
-    /*** ============ LMS Assistant ============ ***/
-    if (MODULES.lmsAssistant) {
-        const callHours = { start: '07:00:00', end: '20:00:00' };
-        const tzData = {
-            'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
-            'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
-            'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
-            'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
-            'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
-            'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
-            'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
-            'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
-            'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
-            'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
-            'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
-            'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
-            'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
-            'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
-        };
-
-        function getLocalTime(state) {
-            const currTime = new Date();
-            return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
-        }
-
-        function isCallable(state) {
-            const time = getLocalTime(state);
-            return time > callHours.start && time < callHours.end;
-        }
-
-        if (location.href.includes('CustomerDetails.aspx?')) {
-            togglepin();
-            setTimeout(() => {
-                const custState = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)').textContent.trim().substring(0, 2);
-                const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
-                const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
-                const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
-                if (unsupportedStates.includes(custState)) {
-                    alert(`Customer from ${custState}. Reloan not allowed.`);
-                }
-                [cellPhone, homePhone].forEach(phone => {
-                    phone.style.fontWeight = '800';
-                    phone.style.color = isCallable(custState) ? 'green' : 'red';
-                });
-            }, 1000);
-        }
-
-
-        if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
-            const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
-            leads.forEach(row => {
-                const cell = row.querySelector('td:nth-child(9)');
-                const state = cell.textContent.trim().substring(0, 2);
-                cell.style.fontWeight = '800';
-                cell.style.color = isCallable(state) ? 'green' : 'red';
-            });
-        }
+    function getLocalTime(state) {
+        const currTime = new Date();
+        return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
     }
+
+    function isCallable(state) {
+        const time = getLocalTime(state);
+        return time > callHours.start && time < callHours.end;
+    }
+
+    function showStyledPopup(title, items, noIcon = false) {
+        const box = document.createElement("div");
+
+        const header = document.createElement("h3");
+        header.innerHTML = noIcon ? `${title}` : `<span style="color: red;">📌</span> ${title}`;
+        header.style.marginBottom = "10px";
+
+        const text = document.createElement("div");
+        text.innerHTML = items.map(txt => `• ${txt}`).join("<br>");
+        text.style.textAlign = "left";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "OK";
+        Object.assign(closeBtn.style, {
+            marginTop: "10px",
+            padding: "4px 12px",
+            border: "1px solid #a27c33",
+            borderRadius: "4px",
+            background: "#5c4400",
+            backgroundImage: "url(Images/global-button-back.png)",
+            backgroundRepeat: "repeat-x",
+            color: "#fff",
+            fontWeight: "bold",
+            cursor: "pointer",
+            fontFamily: "Arial, Helvetica, sans-serif"
+        });
+        closeBtn.onclick = () => box.remove();
+
+        Object.assign(box.style, {
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#fff3cd",
+            color: "#5c4400",
+            padding: "15px 25px",
+            borderRadius: "10px",
+            fontSize: "15px",
+            fontFamily: "Segoe UI, sans-serif",
+            fontWeight: "500",
+            zIndex: "99999",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            maxWidth: "90%",
+            textAlign: "center"
+        });
+
+        box.appendChild(header);
+        box.appendChild(text);
+        box.appendChild(closeBtn);
+        document.body.appendChild(box);
+    }
+
+    if (location.href.includes('CustomerDetails.aspx?')) {
+        togglepin();
+
+        const observer = new MutationObserver(() => {
+            const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
+            const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
+            const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
+
+            if (!custCell || !cellPhone || !homePhone) return;
+
+            const custState = custCell.textContent.trim().substring(0, 2);
+            const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
+            if (unsupportedStates.includes(custState)) {
+                showStyledPopup("Unsupported State", [`Customer from ${custState}. Reloan not allowed.`], true);
+            }
+
+            [cellPhone, homePhone].forEach(phone => {
+                phone.style.fontWeight = '800';
+                phone.style.color = isCallable(custState) ? 'green' : 'red';
+            });
+
+            observer.disconnect();
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
+        const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
+        leads.forEach(row => {
+            const cell = row.querySelector('td:nth-child(9)');
+            const state = cell.textContent.trim().substring(0, 2);
+            cell.style.fontWeight = '800';
+            cell.style.color = isCallable(state) ? 'green' : 'red';
+        });
+    }
+}
+
 
     /*** ============ IBV Button Injector ============ ***/
 
@@ -425,79 +563,144 @@ injectTopMenuPanel();
         waitForIBVButton();
     }
 
-    /*** ============ Email Category Filter ============ ***/
+    /*** ============ Email/TXT Category Filter ============ ***/
 
-    if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
-        const categories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
-        const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
-        const PANEL_ID = 'emailCategoryControlPanel';
+if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
+    const rawCategories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
+    const renamedCategories = {
+        "Loan Letters": "Support",
+        "Collection Letters": "Collection",
+        "Marketing Letters": "Marketing",
+        "DRS Letters": "DRS"
+    };
 
-        const createControlPanel = () => {
-            if (document.getElementById(PANEL_ID)) return;
-            const panel = document.createElement('div');
-            panel.id = PANEL_ID;
-            panel.style.marginLeft = '10px';
-            panel.style.display = 'inline-block';
-            const labelText = document.createElement('span');
-            labelText.textContent = "Categories:";
-            labelText.style.marginRight = "10px";
-            panel.appendChild(labelText);
+    const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
+    const PANEL_ID = 'emailCategoryControlPanel';
 
-            categories.forEach(cat => {
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.checked = JSON.parse(localStorage.getItem(`show_${cat}`) || "true");
-                checkbox.style.marginRight = '5px';
-                checkbox.addEventListener('change', () => {
-                    localStorage.setItem(`show_${cat}`, checkbox.checked);
-                    filterSelectOptions();
-                });
+    const getSelectedLetterType = () => {
+        const select = document.querySelector('select[id$="LetterAction_0"]');
+        return select?.value || "send";
+    };
 
-                const label = document.createElement('label');
-                label.style.marginRight = '10px';
-                label.style.cursor = 'pointer';
-                label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(cat));
-                panel.appendChild(label);
+    const getLetterSelectId = () => {
+        const type = getSelectedLetterType();
+        switch (type) {
+            case "send": return "#ctl00_LoansRepeater_Letter_ForEmail_0";
+            case "textmessage": return "#ctl00_LoansRepeater_Letter_ForTextMessage_0";
+            default: return null;
+        }
+    };
+
+    const createControlPanel = () => {
+        if (document.getElementById(PANEL_ID)) return;
+
+        const panel = document.createElement('div');
+        panel.id = PANEL_ID;
+        panel.style.marginLeft = '10px';
+        panel.style.display = 'inline-block';
+
+        const labelText = document.createElement('span');
+        labelText.textContent = "Categories:";
+        labelText.style.marginRight = "10px";
+        panel.appendChild(labelText);
+
+        rawCategories.forEach(cat => {
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = JSON.parse(localStorage.getItem(`show_${cat}`) || "true");
+            checkbox.style.marginRight = '5px';
+            checkbox.dataset.original = cat;
+            checkbox.addEventListener('change', () => {
+                localStorage.setItem(`show_${cat}`, checkbox.checked);
+                filterSelectOptions();
             });
 
-            const sendButton = document.querySelector('input[type="submit"][value="Send"]');
-            if (sendButton && sendButton.parentElement) {
-                sendButton.parentElement.insertBefore(panel, sendButton.nextSibling);
+            const label = document.createElement('label');
+            label.style.marginRight = '10px';
+            label.style.cursor = 'pointer';
+            label.dataset.category = cat;
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(renamedCategories[cat] || cat));
+            panel.appendChild(label);
+        });
+
+        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
+        if (sendButton && sendButton.parentElement) {
+            sendButton.parentElement.insertBefore(panel, sendButton.nextSibling?.nextSibling || null);
+        }
+    };
+
+    const filterSelectOptions = () => {
+        const selectId = getLetterSelectId();
+        if (!selectId) return;
+
+        const select = document.querySelector(selectId);
+        if (!select) return;
+
+        const letterType = getSelectedLetterType();
+
+        const marketingLabel = [...document.querySelectorAll(`#${PANEL_ID} label`)].find(lbl => lbl.dataset.category === "Marketing Letters");
+        if (marketingLabel) {
+            marketingLabel.style.display = (letterType === "textmessage") ? "none" : "inline-block";
+        }
+
+        let currentCategory = null;
+        Array.from(select.options).forEach(option => {
+            const text = option.textContent.trim();
+
+            if (rawCategories.some(cat => text === `-- ${cat} --`)) {
+                currentCategory = rawCategories.find(cat => text === `-- ${cat} --`);
+                option.style.display = '';
+                return;
             }
-        };
 
-        const filterSelectOptions = () => {
-            const select = document.querySelector('#ctl00_LoansRepeater_Letter_ForEmail_0');
-            if (!select) return;
-
-            let currentCategory = null;
-            Array.from(select.options).forEach(option => {
-                const text = option.textContent.trim();
-                if (categories.some(cat => text === `-- ${cat} --`)) {
-                    currentCategory = categories.find(cat => text === `-- ${cat} --`);
-                    option.style.display = '';
-                    return;
-                }
+            let show = true;
+            if (letterType === "send") {
                 const isDRS = text.includes("[z3RDParty]");
-                const showCurrentCategory = currentCategory && JSON.parse(localStorage.getItem(`show_${currentCategory}`) || "true");
-                const shouldHide =
-                    unwantedEmails.includes(text) ||
-                    (!isDRS && !showCurrentCategory) ||
-                    (isDRS && !JSON.parse(localStorage.getItem("show_DRS Letters") || "false"));
+                const showCurrent = currentCategory && JSON.parse(localStorage.getItem(`show_${currentCategory}`) || "true");
+                show = !unwantedEmails.includes(text) && ((showCurrent && !isDRS) || (isDRS && JSON.parse(localStorage.getItem("show_DRS Letters") || "false")));
+            } else if (letterType === "textmessage") {
+                const isSupport = text.includes("(Sup)");
+                const isCollection = text.includes("(Coll)");
+                const isDRS = text.includes("{zTXT}") || text.includes("(3RDParty)");
 
-                option.style.display = shouldHide ? 'none' : '';
+                const showSupport = JSON.parse(localStorage.getItem("show_Loan Letters") || "true");
+                const showCollection = JSON.parse(localStorage.getItem("show_Collection Letters") || "true");
+                const showDRS = JSON.parse(localStorage.getItem("show_DRS Letters") || "true");
+
+                show =
+                    (isSupport && showSupport) ||
+                    (isCollection && showCollection && !isDRS) ||
+                    (isDRS && showDRS);
+            }
+            option.style.display = show ? '' : 'none';
+        });
+    };
+
+    const waitForSendButton = () => {
+        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
+        if (!sendButton) {
+            requestAnimationFrame(waitForSendButton);
+            return;
+        }
+
+        createControlPanel();
+        filterSelectOptions();
+
+        const letterTypeSelector = document.querySelector('select[id$="LetterAction_0"]');
+        if (letterTypeSelector) {
+            letterTypeSelector.addEventListener("change", () => {
+                setTimeout(() => {
+                    filterSelectOptions();
+                }, 50);
             });
-        };
+        }
+    };
 
-        const observer = new MutationObserver(filterSelectOptions);
-        observer.observe(document.body, { childList: true, subtree: true });
+    const observer = new MutationObserver(waitForSendButton);
+    observer.observe(document.body, { childList: true, subtree: true });
+}
 
-        window.addEventListener('load', () => setTimeout(() => {
-            createControlPanel();
-            filterSelectOptions();
-        }, 700));
-    }
 
     /*** ============ Toggle All Remarks ============ ***/
 
@@ -787,6 +990,32 @@ const PRIMARY_TAB_KEY = "primaryLock";
 
     observeNotifications();
     setInterval(checkNotifications, 10000);
+}
+/*** ============ Remark Filter ============ ***/
+if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
+    const waitForRemarkBlock = () => {
+        const remarkDiv = document.querySelector('[id^="ctl00_LoansRepeater_Div_ApprovalIssues_"]');
+        if (!remarkDiv) {
+            requestAnimationFrame(waitForRemarkBlock);
+            return;
+        }
+
+        const allowedRemarks = [
+            "Bank Account Verification missing",
+            "Customer Signature missing"
+        ];
+
+        const listItems = remarkDiv.querySelectorAll("ul li");
+        listItems.forEach(li => {
+            const text = li.textContent.trim();
+            if (!allowedRemarks.includes(text)) {
+                li.style.display = "none";
+            }
+        });
+    };
+
+    const observer = new MutationObserver(waitForRemarkBlock);
+    observer.observe(document.body, { childList: true, subtree: true });
 }
 /*** ============ Overpaid check module ============ ***/
 
