@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.9
+// @version      1.91
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,16 +15,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.9";
+    const CURRENT_VERSION = "1.91";
 
     const changelog = [
-        "🆕 Added Remark Filter module – keeps only 2 key loan remarks",
-        "📞 Integrated Cancel Voice Bot Call button (next to Change Pending)",
-        "📌 Added Follow-Up Reminder (appears as a yellow pop-up at the top)",
-        "🚫 Unsupported States Reminder redesign (appears as a yellow pop-up at the top)",
-        "🐞 Fixed DOM conflicts and button injection issues",
-        "🎯 Adjusted element positioning for better stability"
-    ];
+    "🐛 Hotfix: Added support for 3rd key remark — 'Origination Date cannot be in the past for ACH loans'"
+];
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
     if (savedVersion !== CURRENT_VERSION) {
@@ -678,11 +673,6 @@ if (MODULES.lmsAssistant) {
     }
 }
 
-
-
-
-
-
     /*** ============ Email/TXT Category Filter ============ ***/
 
 if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
@@ -994,7 +984,8 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
 
         const allowedRemarks = [
             "Bank Account Verification missing",
-            "Customer Signature missing"
+            "Customer Signature missing",
+            "Origination Date cannot be in the past for ACH loans"
         ];
 
         const listItems = remarkDiv.querySelectorAll("ul li");
@@ -1009,7 +1000,6 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
     const observer = new MutationObserver(waitForRemarkBlock);
     observer.observe(document.body, { childList: true, subtree: true });
 }
-
     /*** ============ Overpaid Check module ============ ***/
     if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
         const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
