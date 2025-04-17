@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.91
+// @version      1.92
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,11 +15,12 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.91";
+    const CURRENT_VERSION = "1.92";
 
     const changelog = [
-    "🐛 Hotfix: Added support for 3rd key remark — 'Origination Date cannot be in the past for ACH loans'"
+    "🐛 Hotfix: Remark Filter now also allows 'Origination Date must be...' messages for ACH loans"
 ];
+
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
     if (savedVersion !== CURRENT_VERSION) {
@@ -988,10 +989,16 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
             "Origination Date cannot be in the past for ACH loans"
         ];
 
+        const allowedStartsWith = [
+            "Origination Date must be"
+        ];
+
         const listItems = remarkDiv.querySelectorAll("ul li");
         listItems.forEach(li => {
             const text = li.textContent.trim();
-            if (!allowedRemarks.includes(text)) {
+            const isAllowed = allowedRemarks.includes(text) ||
+                              allowedStartsWith.some(prefix => text.startsWith(prefix));
+            if (!isAllowed) {
                 li.style.display = "none";
             }
         });
@@ -1000,6 +1007,7 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
     const observer = new MutationObserver(waitForRemarkBlock);
     observer.observe(document.body, { childList: true, subtree: true });
 }
+
     /*** ============ Overpaid Check module ============ ***/
     if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
         const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
