@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.92
+// @version      1.93
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,10 +15,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.92";
+    const CURRENT_VERSION = "1.93";
 
     const changelog = [
-    "🐛 Hotfix: Remark Filter now also allows 'Origination Date must be...' messages for ACH loans"
+    "🐛 Hotfix: Added another 2 remarks"
 ];
 
 
@@ -986,7 +986,9 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
         const allowedRemarks = [
             "Bank Account Verification missing",
             "Customer Signature missing",
-            "Origination Date cannot be in the past for ACH loans"
+            "Origination Date cannot be in the past for ACH loans",
+            "Please update Loan Transfer option for this loan",
+            "Multiple active loans not allowed in business rules"
         ];
 
         const allowedStartsWith = [
