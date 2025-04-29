@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.94
+// @version      1.95
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,10 +15,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.94";
+    const CURRENT_VERSION = "1.95";
 
    const changelog = [
-    "🔁 Remark Filter logic reversed — now hides only known unimportant remarks and keeps everything else"
+    "🔁 The “Final Approved Amount must be turned on” remark was added to the displayed ones, due to many user errors"
 ];
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -987,7 +987,6 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
             'Loan remark "Bank account # and ABA verified"',
             'Loan remark "T&C Read and Agreed"',
             'Loan remark "Minimum Amount The Customer Agrees To"',
-            'Loan remark "Final Approved Amount"',
             'Loan remark "All Accounts checked on DL"',
             'Loan remark "Loan Type Matches Cust Loyalty Status"',
             'Loan remark "Loan Amount Fixed"',
