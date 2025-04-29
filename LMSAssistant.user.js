@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.0
+// @version      2.1
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -13,10 +13,10 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.0";
+    const CURRENT_VERSION = "2.1";
 
  const changelog = [
-    "🔁 Remark Filter logic reversed — now hides only known unimportant remarks and keeps everything else"
+    "🔁 The “Final Approved Amount must be turned on” remark was added to the displayed ones, due to many user errors"
 ];
 
 
@@ -1002,7 +1002,6 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
             'Loan remark "Bank account # and ABA verified"',
             'Loan remark "T&C Read and Agreed"',
             'Loan remark "Minimum Amount The Customer Agrees To"',
-            'Loan remark "Final Approved Amount"',
             'Loan remark "All Accounts checked on DL"',
             'Loan remark "Loan Type Matches Cust Loyalty Status"',
             'Loan remark "Loan Amount Fixed"',
