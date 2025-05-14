@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.1
+// @version      2.2
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -13,10 +13,12 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.1";
+    const CURRENT_VERSION = "2.2";
 
  const changelog = [
-    "🔁 The “Final Approved Amount must be turned on” remark was added to the displayed ones, due to many user errors"
+  "🆕 To increase TXT delivery and reduce their blocking by providers, we added IBV Shortener module (only for TXT with Full Token)",
+  "✂️ Allows shortening of manual IBV/ESIG links directly in LMS",
+  "✅ Inserts short link into txt with one click"
 ];
 
 
@@ -92,6 +94,7 @@ const MODULES = {
     qcSearch: true,
     notifications: true,
     overpaidCheck: true,
+    ibvShortener: true,
     remarkFilter: true
 };
 
@@ -104,6 +107,7 @@ const MODULE_LABELS = {
     qcSearch: 'QC Search',
     notifications: 'Notifications Sound BETA',
     overpaidCheck: 'Overpaid Check',
+    ibvShortener: 'IBV Shortener',
     remarkFilter: 'Remark Filter'
 };
 
@@ -117,6 +121,7 @@ const MODULE_DESCRIPTIONS = {
   qcSearch: "QC Search — quick phone-based lookup",
   notifications: "Enables sound and notifications for the tab",
   overpaidCheck: "Checks overpaid status and options for potential refinance",
+  ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
   remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones"
 };
 
@@ -137,15 +142,15 @@ function findHelpMenuItem() {
 }
 
 function injectTopMenuPanel() {
-    
+
     const helpMenuItem = findHelpMenuItem();
     if (!helpMenuItem) {
-        
+
         console.warn('HELP menu item not found — cannot insert LMS Assistant PRO');
         return;
     }
 
-    
+
     const newMenuItem = document.createElement('td');
     newMenuItem.id = "TopMenu-menuItemLMS";
     newMenuItem.innerHTML = '&nbsp;🛠️ LMS Assistant PRO (UW)&nbsp;';
@@ -1022,7 +1027,94 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
+/*** ============ IBV Shortener ============ ***/
+if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
+    const params = new URL(document.location.href).searchParams;
+    const action = params.get("action");
+    const mode = params.get("mode");
+    const letterId = params.get("letterid");
+    const allowedIds = ["120", "139", "620"];
 
+    if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
+        const WORKER_ENDPOINT = 'https://ccwusa.org/create';
+
+        const shortenUI = document.createElement("div");
+        shortenUI.style.background = "#fff";
+        shortenUI.style.padding = "12px";
+        shortenUI.style.border = "2px solid green";
+        shortenUI.style.borderRadius = "10px";
+        shortenUI.style.boxShadow = "0 0 10px rgba(0,0,0,0.2)";
+        shortenUI.style.marginBottom = "15px";
+        shortenUI.style.marginTop = "15px";
+        shortenUI.style.fontFamily = "Arial, sans-serif";
+        shortenUI.style.minWidth = "400px";
+
+        shortenUI.innerHTML = `
+            <b>💡 Shorten IBV Link</b><br>
+            <textarea id="linkInput" style="width:100%; height:80px; margin-top:5px"></textarea><br>
+            <button type="button" id="shortenBtn" style="margin-top:5px">Shorten</button>
+            <div id="shortenResult" style="margin-top:10px; font-family:monospace"></div>
+        `;
+
+        const insertAfter = (newNode, referenceNode) => {
+            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+        };
+
+        const waitForButtonAndInject = () => {
+            const sendBtn = document.getElementById("maincontent_TextMessageButton");
+            if (!sendBtn) return setTimeout(waitForButtonAndInject, 300); // Try again in 300ms
+
+            insertAfter(shortenUI, sendBtn);
+
+            document.getElementById("shortenBtn").onclick = async function () {
+                const input = document.getElementById("linkInput").value.trim();
+                const result = document.getElementById("shortenResult");
+
+                if (!input.startsWith("http")) {
+                    result.innerHTML = `<span style='color:red'>❌ Error: Invalid link</span>`;
+                    return;
+                }
+
+                result.textContent = "⏳ Shortening...";
+
+                try {
+                    const r = await fetch(`${WORKER_ENDPOINT}?url=${encodeURIComponent(input)}`);
+                    const txt = await r.text();
+                    if (!r.ok || !txt.startsWith("http")) throw new Error(txt);
+
+                    result.innerHTML = `✅ <a href="${txt}" target="_blank">${txt}</a> <button type="button" id="copyShort">Insert to txt</button>`;
+
+                    document.getElementById("copyShort").onclick = () => {
+                        if (typeof GM_setClipboard !== 'undefined') {
+                            GM_setClipboard(txt);
+                        } else {
+                            navigator.clipboard.writeText(txt);
+                        }
+
+                        const textarea = document.getElementById("maincontent_TextAreaPlain");
+                        if (textarea) {
+                            const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=(\[token_aes_cbc\]|[a-zA-Z0-9]+)/;
+                            const match = textarea.value.match(pattern);
+                            if (match) {
+                                const newText = textarea.value.replace(pattern, txt);
+                                textarea.value = newText;
+                                textarea.style.color = 'green';
+                                setTimeout(() => {
+                                    textarea.style.color = '';
+                                }, 2200);
+                            }
+                        }
+                    };
+
+                } catch (e) {
+                    result.innerHTML = `❌ Error: ${e.message}`;
+                }
+            };
+        };
+
+        waitForButtonAndInject();
+    }
+}
 /*** ============ Overpaid check module ============ ***/
 
 if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
@@ -1079,11 +1171,11 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
             return ((totalPaid - totalPrincipalLoaned) / totalPrincipalLoaned) * 100;
         };
 
-        
+
         const totalPrincipalLoanedSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(2)';
         const totalPaidSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(4)';
 
-        
+
         const loanStatusCells = document.querySelectorAll('.DataTable.LoansTbl tbody tr td:nth-child(3)');
         let lastEligibleRowIndex = -1;
         loanStatusCells.forEach((statusCell, index) => {
