@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.96
+// @version      1.97
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,7 +15,7 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.96";
+    const CURRENT_VERSION = "1.97";
 
    const changelog = [
   "🆕 To increase TXT delivery and reduce their blocking by providers, we added IBV Shortener module (only for TXT with Full Token)",
@@ -101,7 +101,7 @@
     };
 
     const MODULE_LABELS = {
-        
+
         ibvButton: 'IBV Button',
         emailFilter: 'Email Filter',
         copyPaste: 'Copy/Paste',
@@ -124,7 +124,7 @@
 
     };
 
-    
+
     Object.keys(MODULES).forEach(key => {
         const saved = localStorage.getItem(`lms_module_${key}`);
         if (saved !== null) MODULES[key] = JSON.parse(saved);
@@ -186,7 +186,7 @@
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
         });
 
-        
+
         const style = document.createElement('style');
         style.textContent = `
 .lms-switch {
@@ -226,7 +226,7 @@
 `;
         document.head.appendChild(style);
 
-        
+
         Object.keys(MODULES).forEach(key => {
             if (key === 'lmsAssistant') return;
             const wrapper = document.createElement('div');
@@ -1015,7 +1015,7 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
 
 /*** ============ IBV Shortener ============ ***/
 if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URL(document.location.href).searchParams;
     const action = params.get("action");
     const mode = params.get("mode");
     const letterId = params.get("letterid");
@@ -1046,9 +1046,10 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
             referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
         };
 
-        window.addEventListener("load", () => {
+        const waitForButtonAndInject = () => {
             const sendBtn = document.getElementById("maincontent_TextMessageButton");
-            if (!sendBtn) return;
+            if (!sendBtn) return setTimeout(waitForButtonAndInject, 300); // Try again in 300ms
+
             insertAfter(shortenUI, sendBtn);
 
             document.getElementById("shortenBtn").onclick = async function () {
@@ -1095,7 +1096,9 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
                     result.innerHTML = `❌ Error: ${e.message}`;
                 }
             };
-        });
+        };
+
+        waitForButtonAndInject();
     }
 }
 
