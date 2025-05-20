@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.97
+// @version      1.98
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,12 +15,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.97";
+    const CURRENT_VERSION = "1.98";
 
    const changelog = [
-  "🆕 To increase TXT delivery and reduce their blocking by providers, we added IBV Shortener module (only for TXT with Full Token)",
-  "✂️ Allows shortening of manual IBV/ESIG links directly in LMS",
-  "✅ Inserts short link into txt with one click"
+  "🆕 Updated IBV Shortener functionality!",
+  "✅ Now the latest links from “SMALL” NOTES are pulled up automatically (but still keep an eye out and check what you're sending)"
 ];
 
 
@@ -1020,25 +1019,33 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
     const mode = params.get("mode");
     const letterId = params.get("letterid");
     const allowedIds = ["120", "139", "620"];
+    const WORKER_ENDPOINT = 'https://ccwusa.org/create';
 
     if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
-        const WORKER_ENDPOINT = 'https://ccwusa.org/create';
+        const parseLMSDateFromCDT = (dateStr) => {
+            const [datePart, timePart, ampm] = dateStr.trim().split(/\s+/);
+            const [month, day, year] = datePart.split("/").map(Number);
+            let [hour, minute, second] = timePart.split(":" ).map(Number);
+            if (ampm === "PM" && hour !== 12) hour += 12;
+            if (ampm === "AM" && hour === 12) hour = 0;
+            return new Date(Date.UTC(year, month - 1, day, hour + 5, minute, second));
+        };
 
         const shortenUI = document.createElement("div");
-        shortenUI.style.background = "#fff";
-        shortenUI.style.padding = "12px";
-        shortenUI.style.border = "2px solid green";
-        shortenUI.style.borderRadius = "10px";
-        shortenUI.style.boxShadow = "0 0 10px rgba(0,0,0,0.2)";
-        shortenUI.style.marginBottom = "15px";
-        shortenUI.style.marginTop = "15px";
-        shortenUI.style.fontFamily = "Arial, sans-serif";
-        shortenUI.style.minWidth = "400px";
+        shortenUI.style.cssText = `
+            background:#fff; padding:12px; border:2px solid green; border-radius:10px;
+            box-shadow:0 0 10px rgba(0,0,0,0.2); margin-bottom:15px; margin-top:15px;
+            font-family:Arial,sans-serif; min-width:400px;`;
 
         shortenUI.innerHTML = `
-            <b>💡 Shorten IBV Link</b><br>
-            <textarea id="linkInput" style="width:100%; height:80px; margin-top:5px"></textarea><br>
-            <button type="button" id="shortenBtn" style="margin-top:5px">Shorten</button>
+            <b>Shorten IBV Link</b><br>
+            <textarea id="linkInput" style="width:100%; height:80px; margin-top:5px; font-family:monospace;"></textarea><br>
+            <div style="margin-top:5px; display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="button" id="fetchIBV" style="flex:1;">Find latest IBV link</button>
+                <button type="button" id="fetchESIG" style="flex:1;">Find latest E-Sign link</button>
+                <button type="button" id="fetchSHORT" style="flex:1;">Find latest Shortened link</button>
+                <button type="button" id="shortenBtn" style="flex:1;">Shorten</button>
+            </div>
             <div id="shortenResult" style="margin-top:10px; font-family:monospace"></div>
         `;
 
@@ -1048,50 +1055,123 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
 
         const waitForButtonAndInject = () => {
             const sendBtn = document.getElementById("maincontent_TextMessageButton");
-            if (!sendBtn) return setTimeout(waitForButtonAndInject, 300); // Try again in 300ms
-
+            if (!sendBtn) return setTimeout(waitForButtonAndInject, 300);
             insertAfter(shortenUI, sendBtn);
+
+            const renderShortLinkUI = (shortUrl) => {
+                const result = document.getElementById("shortenResult");
+                result.innerHTML = `✅ <a href="${shortUrl}" target="_blank">${shortUrl}</a> <button type="button" id="copyShort">Insert to txt</button>`;
+
+                document.getElementById("copyShort").onclick = () => {
+                    if (typeof GM_setClipboard !== 'undefined') {
+                        GM_setClipboard(shortUrl);
+                    } else {
+                        navigator.clipboard.writeText(shortUrl);
+                    }
+
+                    const textarea = document.getElementById("maincontent_TextAreaPlain");
+                    if (textarea) {
+                        const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=(\[token_aes_cbc\]|[a-zA-Z0-9]+)/;
+                        const match = textarea.value.match(pattern);
+                        if (match) {
+                            const newText = textarea.value.replace(pattern, shortUrl);
+                            textarea.value = newText;
+                            textarea.style.color = 'green';
+                            setTimeout(() => { textarea.style.color = ''; }, 2200);
+                        }
+                    }
+                };
+            };
+
+            const fetchFromNotes = async (type) => {
+                const customerIdMatch = location.href.match(/customerid=(\d+)/);
+                if (!customerIdMatch) return alert("❌ CustomerID not found in URL");
+
+                const customerId = customerIdMatch[1];
+                const res = await fetch(`/plm.net/customers/CustomerNotes.aspx?customerid=${customerId}&isnosection=true`);
+                const html = await res.text();
+                const doc = new DOMParser().parseFromString(html, "text/html");
+                const rows = Array.from(doc.querySelectorAll("table.DataTable tbody tr"));
+
+                const REGEX = type === "IBV"
+                    ? /https:\/\/creditcube\.com\/ibv\?t=[a-zA-Z0-9]+/
+                    : type === "eSig"
+                    ? /https:\/\/creditcube\.com\/esig\?t=[a-zA-Z0-9]+/
+                    : /https:\/\/ccwusa\.org\/[a-zA-Z0-9]{7,}/;
+
+                let found = null;
+                for (let i = rows.length - 1; i >= 0; i--) {
+                    const cells = rows[i].querySelectorAll("td");
+                    if (cells.length < 3) continue;
+                    const dateStr = cells[0].textContent.trim();
+                    const noteText = cells[2].textContent;
+                    const match = noteText.match(REGEX);
+                    if (match) {
+                        found = { link: match[0], dateStr };
+                        break;
+                    }
+                }
+
+                if (!found) return alert(`❌ No ${type} link found in notes`);
+
+                const parsed = parseLMSDateFromCDT(found.dateStr);
+                const now = new Date();
+                const diffMs = now.getTime() - parsed.getTime();
+                const absDiff = Math.abs(diffMs);
+                const days = Math.floor(absDiff / (1000 * 60 * 60 * 24));
+                const hours = Math.floor((absDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const direction = diffMs >= 0 ? "ago" : "from now";
+
+                const formatted = new Intl.DateTimeFormat("en-US", {
+                    timeZone: "America/Chicago",
+                    timeZoneName: "short",
+                    month: "2-digit",
+                    day: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    hour12: true
+                }).format(parsed);
+
+                const input = document.getElementById("linkInput");
+                input.value = `Found ${type}: ${formatted} (${days} days and ${hours} hours ${direction})\n${found.link}`;
+                input.style.border = "2px solid green";
+                setTimeout(() => { input.style.border = ""; }, 2000);
+
+                const shortenBtn = document.getElementById("shortenBtn");
+                if (type === "Shorten") {
+                    shortenBtn.disabled = true;
+                    shortenBtn.textContent = "🔒 Already Shortened";
+                    renderShortLinkUI(found.link);
+                } else {
+                    shortenBtn.disabled = false;
+                    shortenBtn.textContent = "Shorten";
+                }
+            };
+
+            document.getElementById("fetchIBV").onclick = () => fetchFromNotes("IBV");
+            document.getElementById("fetchESIG").onclick = () => fetchFromNotes("eSig");
+            document.getElementById("fetchSHORT").onclick = () => fetchFromNotes("Shorten");
 
             document.getElementById("shortenBtn").onclick = async function () {
                 const input = document.getElementById("linkInput").value.trim();
                 const result = document.getElementById("shortenResult");
 
-                if (!input.startsWith("http")) {
-                    result.innerHTML = `<span style='color:red'>❌ Error: Invalid link</span>`;
+                const urlMatch = input.match(/https:\/\/creditcube\.com\/(ibv|esig)\?t=[a-zA-Z0-9]+/);
+                if (!urlMatch) {
+                    result.innerHTML = `<span style='color:red'>❌ Error: No valid link found</span>`;
                     return;
                 }
 
+                const url = urlMatch[0];
                 result.textContent = "⏳ Shortening...";
 
                 try {
-                    const r = await fetch(`${WORKER_ENDPOINT}?url=${encodeURIComponent(input)}`);
+                    const r = await fetch(`${WORKER_ENDPOINT}?url=${encodeURIComponent(url)}`);
                     const txt = await r.text();
                     if (!r.ok || !txt.startsWith("http")) throw new Error(txt);
-
-                    result.innerHTML = `✅ <a href="${txt}" target="_blank">${txt}</a> <button type="button" id="copyShort">Insert to txt</button>`;
-
-                    document.getElementById("copyShort").onclick = () => {
-                        if (typeof GM_setClipboard !== 'undefined') {
-                            GM_setClipboard(txt);
-                        } else {
-                            navigator.clipboard.writeText(txt);
-                        }
-
-                        const textarea = document.getElementById("maincontent_TextAreaPlain");
-                        if (textarea) {
-                            const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=(\[token_aes_cbc\]|[a-zA-Z0-9]+)/;
-                            const match = textarea.value.match(pattern);
-                            if (match) {
-                                const newText = textarea.value.replace(pattern, txt);
-                                textarea.value = newText;
-                                textarea.style.color = 'green';
-                                setTimeout(() => {
-                                    textarea.style.color = '';
-                                }, 2200);
-                            }
-                        }
-                    };
-
+                    renderShortLinkUI(txt);
                 } catch (e) {
                     result.innerHTML = `❌ Error: ${e.message}`;
                 }
@@ -1101,6 +1181,8 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
         waitForButtonAndInject();
     }
 }
+
+
 
 
     /*** ============ Overpaid Check module ============ ***/
