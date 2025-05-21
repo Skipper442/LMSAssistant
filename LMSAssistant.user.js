@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.98
+// @version      1.99
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,11 +15,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.98";
+    const CURRENT_VERSION = "1.99";
 
    const changelog = [
-  "🆕 Updated IBV Shortener functionality!",
-  "✅ Now the latest links from “SMALL” NOTES are pulled up automatically (but still keep an eye out and check what you're sending)"
+  "🆕 HotFixed - Voxia calls canseling"
 ];
 
 
@@ -422,7 +421,6 @@ if (MODULES.lmsAssistant) {
 
     function showStyledPopup(title, items, noIcon = false) {
         const box = document.createElement("div");
-
         const header = document.createElement("h3");
         header.innerHTML = noIcon ? `${title}` : `<span style="color: red;">📌</span> ${title}`;
         header.style.marginBottom = "10px";
@@ -434,36 +432,17 @@ if (MODULES.lmsAssistant) {
         const closeBtn = document.createElement("button");
         closeBtn.textContent = "OK";
         Object.assign(closeBtn.style, {
-            marginTop: "10px",
-            padding: "4px 12px",
-            border: "1px solid #a27c33",
-            borderRadius: "4px",
-            background: "#5c4400",
-            backgroundImage: "url(Images/global-button-back.png)",
-            backgroundRepeat: "repeat-x",
-            color: "#fff",
-            fontWeight: "bold",
-            cursor: "pointer",
-            fontFamily: "Arial, Helvetica, sans-serif"
+            marginTop: "10px", padding: "4px 12px", border: "1px solid #a27c33", borderRadius: "4px",
+            background: "#5c4400", backgroundImage: "url(Images/global-button-back.png)", backgroundRepeat: "repeat-x",
+            color: "#fff", fontWeight: "bold", cursor: "pointer", fontFamily: "Arial, Helvetica, sans-serif"
         });
         closeBtn.onclick = () => box.remove();
 
         Object.assign(box.style, {
-            position: "fixed",
-            top: "20px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            backgroundColor: "#fff3cd",
-            color: "#5c4400",
-            padding: "15px 25px",
-            borderRadius: "10px",
-            fontSize: "15px",
-            fontFamily: "Segoe UI, sans-serif",
-            fontWeight: "500",
-            zIndex: "99999",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-            maxWidth: "90%",
-            textAlign: "center"
+            position: "fixed", top: "20px", left: "50%", transform: "translateX(-50%)",
+            backgroundColor: "#fff3cd", color: "#5c4400", padding: "15px 25px", borderRadius: "10px",
+            fontSize: "15px", fontFamily: "Segoe UI, sans-serif", fontWeight: "500", zIndex: "99999",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)", maxWidth: "90%", textAlign: "center"
         });
 
         box.appendChild(header);
@@ -480,7 +459,6 @@ if (MODULES.lmsAssistant) {
             const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
             const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
             const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
-            const changeBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_ChangePendingDetails_"]');
             const statusElem = document.querySelector('#ctl00_LoansRepeater_Span_Loan_Status_0');
             const container = statusElem?.closest('td');
             const headerDiv = document.querySelector("div.Header");
@@ -504,161 +482,85 @@ if (MODULES.lmsAssistant) {
                 showStyledPopup("Follow-Up Reminder", followUps);
             }
 
-            if (!document.getElementById("sendPwaBtn")) {
-                const loanId = headerDiv?.innerText.match(/Loan[#№:]?\s*(\d+)/i)?.[1];
-                const customerId = (() => {
-                    const rows = profileTable.querySelectorAll("tr");
-                    for (let row of rows) {
-                        const tds = row.querySelectorAll("td");
-                        for (let i = 0; i < tds.length; i++) {
-                            if (tds[i].innerText.includes("Customer #")) {
-                                return tds[i + 1]?.innerText.trim() || null;
-                            }
-                        }
-                    }
-                    return null;
-                })();
+            const notesButton = document.querySelector('#ctl00_LoansRepeater_NotesLink_0');
+            const containerId = document.querySelector('#LastLoanSection [id^="loan_"]')?.id;
+            if (!notesButton || !containerId) return;
 
-                const hasActiveLoan = () => {
-                    const headers = Array.from(document.querySelectorAll("div.Header"));
-                    return headers.some(header => header.innerText.toUpperCase().includes("ACTIVE"));
-                };
-
-                const hasActiveLoanMentionedInRefinance = () => {
-                    const headers = Array.from(document.querySelectorAll("div.Header"));
-                    let activeLoanId = null;
-                    for (let header of headers) {
-                        const text = header.innerText.toUpperCase();
-                        if (text.includes("ACTIVE")) {
-                            const match = text.match(/LOAN[#№:]?\s*(\d+)/i);
-                            if (match) {
-                                activeLoanId = match[1];
-                                break;
-                            }
-                        }
-                    }
-                    if (!activeLoanId) return false;
-                    const refinanceCell = Array.from(document.querySelectorAll("td")).find(td => td.innerText.includes("Refinance"));
-                    return refinanceCell?.innerText.includes(activeLoanId) || false;
-                };
-
-                const shouldAnimate = hasActiveLoan() || hasActiveLoanMentionedInRefinance();
-
-                const style = document.createElement("style");
-                style.textContent = `
-                    @keyframes pulse {
-                        0%   { transform: scale(1); }
-                        50%  { transform: scale(1.12); }
-                        100% { transform: scale(1); }
-                    }
-                    .attention {
-                        animation: pulse 1.5s ease-in-out infinite;
-                    }
-                `;
-                document.head.appendChild(style);
-
-                const pwaBtn = document.createElement("input");
-                pwaBtn.type = "button";
-                pwaBtn.id = "sendPwaBtn";
-                pwaBtn.value = "Send PWA";
-                pwaBtn.title = "Send client our mobile app (PWA) instructions";
-
-                if (shouldAnimate) {
-                    pwaBtn.classList.add("attention");
-                }
-
-                Object.assign(pwaBtn.style, {
-                    padding: "4px",
-                    fontFamily: "Arial, Helvetica, sans-serif",
-                    fontWeight: "bold",
-                    fontSize: "12px",
-                    border: "1px solid #2e9fd8",
-                    background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
-                    color: "#DFDFDF",
-                    cursor: "pointer",
-                    marginLeft: "5px"
-                });
-
-                pwaBtn.onclick = () => {
-                    const letterId = 684;
-                    const url = `https://apply.creditcube.com/plm.net/customers/popups/PreviewLetter.aspx?action=send&customerid=${customerId}&letterid=${letterId}&loanid=${loanId}&mode=send`;
-                    const iframe = document.createElement("iframe");
-                    iframe.style.display = "none";
-                    iframe.src = url;
-                    document.body.appendChild(iframe);
-                    pwaBtn.classList.remove("attention");
-                };
-
-                sendBtn.parentElement.insertBefore(pwaBtn, sendBtn.nextSibling);
-            }
-
-            // Cancel Voice Bot Call button
+            const notesSpan = notesButton.parentElement;
             const statusText = container?.innerText || '';
-            if (statusText.includes("AA Call In Progress") && changeBtn && !document.getElementById("cancelVoiceBtn")) {
-                const [, loanId] = changeBtn.id.split("_").reverse();
+
+            if (statusText.includes("AA Call In Progress") && !document.getElementById("cancelVoiceBtn")) {
+                const [, loanId] = containerId.split('_');
+
                 const cancelBtn = document.createElement("input");
                 cancelBtn.type = "button";
                 cancelBtn.id = "cancelVoiceBtn";
                 cancelBtn.value = "Cancel Voice Bot Call";
                 Object.assign(cancelBtn.style, {
-                    marginLeft: "5px",
-                    padding: "4px 8px",
-                    fontSize: "12px",
-                    fontWeight: "bold",
-                    fontFamily: "Arial, Helvetica, sans-serif",
-                    background: "#f33",
-                    color: "#fff",
-                    border: "1px solid #a00",
-                    cursor: "pointer"
+                    marginRight: "6px", padding: "4px 8px", fontSize: "12px", fontWeight: "bold",
+                    fontFamily: "Arial, Helvetica, sans-serif", background: "#f33", color: "#fff",
+                    border: "1px solid #a00", cursor: "pointer"
                 });
 
-                cancelBtn.onclick = () => {
+                cancelBtn.onclick = function () {
                     if (!confirm("Are you sure you want to cancel voice bot call?")) return;
 
-                    const style = document.createElement('style');
-                    style.innerHTML = `
-                        .loader-container {
-                            position: fixed;
-                            top: 0; left: 0;
-                            width: 100%; height: 100%;
-                            background-color: rgba(255,255,255,0.7);
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            z-index: 9999;
-                        }
-                        .loader {
-                            border: 5px solid #f3f3f3;
-                            border-top: 5px solid #3498db;
-                            border-radius: 50%;
-                            width: 50px;
-                            height: 50px;
-                            animation: spin 2s linear infinite;
-                        }
-                        @keyframes spin {
-                            0% { transform: rotate(0deg); }
-                            100% { transform: rotate(360deg); }
-                        }
-                    `;
-                    document.head.appendChild(style);
+                    if (!document.getElementById('loader-style')) {
+                        const style = document.createElement('style');
+                        style.id = 'loader-style';
+                        style.innerHTML = `
+                            .loader-container {
+                                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                                background-color: rgba(255,255,255,0.7); display: flex;
+                                justify-content: center; align-items: center; z-index: 9999;
+                            }
+                            .loader {
+                                border: 5px solid #f3f3f3; border-top: 5px solid #3498db;
+                                border-radius: 50%; width: 50px; height: 50px;
+                                animation: spin 2s linear infinite;
+                            }
+                            @keyframes spin {
+                                0% { transform: rotate(0deg); }
+                                100% { transform: rotate(360deg); }
+                            }`;
+                        document.head.appendChild(style);
+                    }
 
                     const loaderContainer = document.createElement("div");
                     loaderContainer.className = "loader-container";
+                    loaderContainer.id = "page-loader";
                     const loader = document.createElement("div");
                     loader.className = "loader";
                     loaderContainer.appendChild(loader);
                     document.body.appendChild(loaderContainer);
 
-                    const win = window.open(`https://ibv.creditsense.ai/cancel-voice-bot-call?layout=embedded&loanId=${loanId}`, "_blank");
+                    const domain = "https://ibv.creditsense.ai";
+                    const width = 600, height = 400;
+                    const left = (screen.width - width) / 2;
+                    const top = (screen.height - height) / 2;
+
+                    const newWindow = window.open(
+                        `${domain}/cancel-voice-bot-call?layout=embedded&loanId=${loanId}`,
+                        'newWindow',
+                        `width=${width},height=${height},left=${left},top=${top},location=no`
+                    );
+
                     const timer = setInterval(() => {
-                        if (win.closed) {
+                        if (newWindow.closed) {
                             clearInterval(timer);
                             location.reload();
                         }
                     }, 100);
+
+                    const listener = function (event) {
+                        if (event.origin !== domain) return;
+                        window.removeEventListener("message", listener);
+                        newWindow.close();
+                    };
+                    window.addEventListener("message", listener);
                 };
 
-                changeBtn.parentElement.insertBefore(cancelBtn, changeBtn.nextSibling);
+                notesSpan.before(cancelBtn);
             }
 
             observer.disconnect();
@@ -677,6 +579,7 @@ if (MODULES.lmsAssistant) {
         });
     }
 }
+
 
     /*** ============ Email/TXT Category Filter ============ ***/
 
