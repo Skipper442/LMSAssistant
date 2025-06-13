@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.99
+// @version      2.00
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,11 +15,13 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.99";
+    const CURRENT_VERSION = "2.00";
 
-   const changelog = [
-  "🆕 HotFixed - Voxia calls canseling"
+  const changelog = [
+  "🆕 Added — Click-to-call for Cell and Home phones via Bria",
+  "✅ Improved — Numbers are now clickable directly, styled with underline & hover",
 ];
+
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -419,6 +421,59 @@ if (MODULES.lmsAssistant) {
         return time > callHours.start && time < callHours.end;
     }
 
+    function makePhoneClickable(phoneEl) {
+        if (!phoneEl || phoneEl.dataset.briaLinked) return null;
+
+        const rawNumber = phoneEl.textContent.trim();
+        const sanitizedNumber = rawNumber.replace(/[^\d]/g, '');
+        if (sanitizedNumber.length < 7) return null;
+
+        const span = document.createElement('span');
+        span.textContent = rawNumber;
+        span.title = 'Click to call via Bria';
+        span.style.cursor = 'pointer';
+        span.style.display = 'inline';
+        span.style.textDecoration = 'underline';
+        span.style.textUnderlineOffset = '2px';
+        span.style.transition = 'opacity 0.2s ease, text-decoration-color 0.2s ease';
+        span.style.textDecorationColor = 'inherit';
+        span.className = phoneEl.className;
+
+        span.onmouseover = () => {
+            span.style.opacity = '0.8';
+            span.style.textDecorationColor = '#28a745';
+        };
+        span.onmouseout = () => {
+            span.style.opacity = '1';
+            span.style.textDecorationColor = 'inherit';
+        };
+
+        span.onclick = () => {
+            const number = `sip:211${sanitizedNumber}`;
+            const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
+
+            if (popup) {
+                popup.document.write(`
+                    <html>
+                        <head><title></title></head>
+                        <body>
+                            <script>
+                                setTimeout(() => { location.href = "${number}"; }, 100);
+                                setTimeout(() => { window.close(); }, 2000);
+                            <\/script>
+                        </body>
+                    </html>
+                `);
+            } else {
+                alert("Pop-up був заблокований. Дозвольте його у браузері.");
+            }
+        };
+
+        phoneEl.replaceWith(span);
+        span.dataset.briaLinked = 'true';
+        return span;
+    }
+
     function showStyledPopup(title, items, noIcon = false) {
         const box = document.createElement("div");
         const header = document.createElement("h3");
@@ -473,8 +528,11 @@ if (MODULES.lmsAssistant) {
             }
 
             [cellPhone, homePhone].forEach(phone => {
-                phone.style.fontWeight = '800';
-                phone.style.color = isCallable(custState) ? 'green' : 'red';
+                const span = makePhoneClickable(phone);
+                if (span) {
+                    span.style.fontWeight = '800';
+                    span.style.color = isCallable(custState) ? 'green' : 'red';
+                }
             });
 
             const followUps = Array.from(document.querySelectorAll(".tr-followup td.td1")).map(td => td.innerText.trim());
@@ -579,6 +637,8 @@ if (MODULES.lmsAssistant) {
         });
     }
 }
+
+
 
 
     /*** ============ Email/TXT Category Filter ============ ***/
