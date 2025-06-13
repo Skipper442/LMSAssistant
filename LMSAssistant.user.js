@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.00
+// @version      2.10
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,13 +15,12 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.00";
+    const CURRENT_VERSION = "2.10";
 
   const changelog = [
   "🆕 Added — Click-to-call for Cell and Home phones via Bria",
   "✅ Improved — Numbers are now clickable directly, styled with underline & hover",
 ];
-
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -449,25 +448,34 @@ if (MODULES.lmsAssistant) {
         };
 
         span.onclick = () => {
-            const number = `sip:211${sanitizedNumber}`;
-            const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
+    const number = `sip:211${sanitizedNumber}`;
 
-            if (popup) {
-                popup.document.write(`
-                    <html>
-                        <head><title></title></head>
-                        <body>
-                            <script>
-                                setTimeout(() => { location.href = "${number}"; }, 100);
-                                setTimeout(() => { window.close(); }, 2000);
-                            <\/script>
-                        </body>
-                    </html>
-                `);
-            } else {
-                alert("Pop-up був заблокований. Дозвольте його у браузері.");
-            }
-        };
+    const isFirstTime = !localStorage.getItem('briaConfirmed');
+
+    if (isFirstTime) {
+        localStorage.setItem('briaConfirmed', 'true');
+        window.open(number, '_blank'); 
+        alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
+    } else {
+        const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
+        if (popup) {
+            popup.document.write(`
+                <html>
+                    <head><title></title></head>
+                    <body>
+                        <script>
+                            setTimeout(() => { location.href = "${number}"; }, 100);
+                            setTimeout(() => { window.close(); }, 2000);
+                        <\/script>
+                    </body>
+                </html>
+            `);
+        } else {
+            alert("The pop-up has been blocked. Please allow it in your browser.");
+        }
+    }
+};
+
 
         phoneEl.replaceWith(span);
         span.dataset.briaLinked = 'true';
@@ -637,8 +645,6 @@ if (MODULES.lmsAssistant) {
         });
     }
 }
-
-
 
 
     /*** ============ Email/TXT Category Filter ============ ***/
