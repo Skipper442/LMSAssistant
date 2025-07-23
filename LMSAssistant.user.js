@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.10
+// @version      2.11
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,11 +15,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.10";
+    const CURRENT_VERSION = "2.11";
 
   const changelog = [
-  "🆕 Added — Click-to-call for Cell and Home phones via Bria",
-  "✅ Improved — Numbers are now clickable directly, styled with underline & hover",
+  "🔁 Switched — IBV shortener now uses CRP backend with tap.cy links",
 ];
 
 
@@ -947,40 +946,6 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
         if (element) element.textContent = 'Quick Search';
     }
 
-/*** ============ Remark Filter ============ ***/
-if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
-    const waitForRemarkBlock = () => {
-        const remarkDiv = document.querySelector('[id^="ctl00_LoansRepeater_Div_ApprovalIssues_"]');
-        if (!remarkDiv) {
-            requestAnimationFrame(waitForRemarkBlock);
-            return;
-        }
-
-        const hiddenPhrases = [
-            'Loan remark "Personal Info Verification"',
-            'Loan remark "Bank account # and ABA verified"',
-            'Loan remark "T&C Read and Agreed"',
-            'Loan remark "Minimum Amount The Customer Agrees To"',
-            'Loan remark "All Accounts checked on DL"',
-            'Loan remark "Loan Type Matches Cust Loyalty Status"',
-            'Loan remark "Loan Amount Fixed"',
-            'Loan remark "Promotion Code"'
-        ];
-
-        const listItems = remarkDiv.querySelectorAll("ul li");
-        listItems.forEach(li => {
-            const text = li.textContent.trim();
-            const shouldHide = hiddenPhrases.some(phrase => text.includes(phrase));
-            if (shouldHide) {
-                li.style.display = "none";
-            }
-        });
-    };
-
-    const observer = new MutationObserver(waitForRemarkBlock);
-    observer.observe(document.body, { childList: true, subtree: true });
-}
-
 /*** ============ IBV Shortener ============ ***/
 if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
     const params = new URL(document.location.href).searchParams;
@@ -988,7 +953,12 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
     const mode = params.get("mode");
     const letterId = params.get("letterid");
     const allowedIds = ["120", "139", "620"];
-    const WORKER_ENDPOINT = 'https://ccwusa.org/create';
+    const GRAPHQL_ENDPOINT = 'https://api.creditsense.ai/';
+    const SHORTENER_DOMAIN = 'tap.cy';
+    const API_KEY_STORAGE_KEY = 'shorturl_api_key';
+
+    // === Use hardcoded API key ===
+    const apiKey = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
 
     if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
         const parseLMSDateFromCDT = (dateStr) => {
@@ -1137,9 +1107,32 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
                 result.textContent = "⏳ Shortening...";
 
                 try {
-                    const r = await fetch(`${WORKER_ENDPOINT}?url=${encodeURIComponent(url)}`);
-                    const txt = await r.text();
-                    if (!r.ok || !txt.startsWith("http")) throw new Error(txt);
+                    const r = await fetch(GRAPHQL_ENDPOINT, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': apiKey,
+                        },
+                        body: JSON.stringify({
+                            query: `
+                                mutation ShortURL($url: String!, $domain: String!) {
+                                    shortUrl(input: { url: $url, domain: $domain })
+                                }
+                            `,
+                            variables: {
+                                url,
+                                domain: SHORTENER_DOMAIN
+                            }
+                        })
+                    });
+
+                    const json = await r.json();
+                    const txt = json?.data?.shortUrl;
+
+                    if (!r.ok || !txt?.startsWith("http")) {
+                        throw new Error("❌ Invalid or empty response: " + JSON.stringify(json));
+                    }
+
                     renderShortLinkUI(txt);
                 } catch (e) {
                     result.innerHTML = `❌ Error: ${e.message}`;
@@ -1150,6 +1143,7 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
         waitForButtonAndInject();
     }
 }
+
 
 
 
