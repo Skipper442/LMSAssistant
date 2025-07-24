@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.11
+// @version      2.12
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,10 +15,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.11";
+    const CURRENT_VERSION = "2.12";
 
   const changelog = [
-  "🔁 Switched — IBV shortener now uses CRP backend with tap.cy links",
+  "Fixed Remark filter",
 ];
 
 
@@ -946,6 +946,40 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
         if (element) element.textContent = 'Quick Search';
     }
 
+/*** ============ Remark Filter ============ ***/
+if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
+    const waitForRemarkBlock = () => {
+        const remarkDiv = document.querySelector('[id^="ctl00_LoansRepeater_Div_ApprovalIssues_"]');
+        if (!remarkDiv) {
+            requestAnimationFrame(waitForRemarkBlock);
+            return;
+        }
+
+        const hiddenPhrases = [
+            'Loan remark "Personal Info Verification"',
+            'Loan remark "Bank account # and ABA verified"',
+            'Loan remark "T&C Read and Agreed"',
+            'Loan remark "Minimum Amount The Customer Agrees To"',
+            'Loan remark "All Accounts checked on DL"',
+            'Loan remark "Loan Type Matches Cust Loyalty Status"',
+            'Loan remark "Loan Amount Fixed"',
+            'Loan remark "Promotion Code"'
+        ];
+
+        const listItems = remarkDiv.querySelectorAll("ul li");
+        listItems.forEach(li => {
+            const text = li.textContent.trim();
+            const shouldHide = hiddenPhrases.some(phrase => text.includes(phrase));
+            if (shouldHide) {
+                li.style.display = "none";
+            }
+        });
+    };
+
+    const observer = new MutationObserver(waitForRemarkBlock);
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
 /*** ============ IBV Shortener ============ ***/
 if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
     const params = new URL(document.location.href).searchParams;
@@ -1143,9 +1177,6 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
         waitForButtonAndInject();
     }
 }
-
-
-
 
 
     /*** ============ Overpaid Check module ============ ***/
