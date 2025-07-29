@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.12
+// @version      2.13
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,10 +15,12 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.12";
+    const CURRENT_VERSION = "2.13";
 
   const changelog = [
-  "Fixed Remark filter",
+"✂️ Updated short link domain from creditcube.com to tap.cy",
+"⏳ Ignores links older than 5 days (based on Note timestamp)",
+"⚠️ Added alert: 'No fresh links found, please send a full-token link manually first'"
 ];
 
 
@@ -989,9 +991,6 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
     const allowedIds = ["120", "139", "620"];
     const GRAPHQL_ENDPOINT = 'https://api.creditsense.ai/';
     const SHORTENER_DOMAIN = 'tap.cy';
-    const API_KEY_STORAGE_KEY = 'shorturl_api_key';
-
-    // === Use hardcoded API key ===
     const apiKey = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
 
     if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
@@ -1070,7 +1069,7 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
                     ? /https:\/\/creditcube\.com\/ibv\?t=[a-zA-Z0-9]+/
                     : type === "eSig"
                     ? /https:\/\/creditcube\.com\/esig\?t=[a-zA-Z0-9]+/
-                    : /https:\/\/ccwusa\.org\/[a-zA-Z0-9]{7,}/;
+                    : /https:\/\/(creditcube\.com|tap\.cy)\/[a-zA-Z0-9]{6,}/;
 
                 let found = null;
                 for (let i = rows.length - 1; i >= 0; i--) {
@@ -1080,12 +1079,20 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
                     const noteText = cells[2].textContent;
                     const match = noteText.match(REGEX);
                     if (match) {
-                        found = { link: match[0], dateStr };
-                        break;
+                        const parsed = parseLMSDateFromCDT(dateStr);
+                        const now = new Date();
+                        const ageDays = (now - parsed) / (1000 * 60 * 60 * 24);
+                        if (ageDays <= 5) {
+                            found = { link: match[0], dateStr };
+                            break;
+                        }
                     }
                 }
 
-                if (!found) return alert(`❌ No ${type} link found in notes`);
+                if (!found) {
+                    alert("❌ There are no fresh links to shorten (last 5 days). Please send the Full Token link yourself first.");
+                    return;
+                }
 
                 const parsed = parseLMSDateFromCDT(found.dateStr);
                 const now = new Date();
