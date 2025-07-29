@@ -6,8 +6,8 @@
 // @description  LMS Assistant PRO with Back Office modules only
 // @match        https://apply.creditcube.com/*
 // @match        https://portal.decisionlogic.com/CreateRequest.aspx*
-// @updateURL    
-// @downloadURL  
+// @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
+// @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
