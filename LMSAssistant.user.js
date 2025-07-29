@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.2
+// @version      1.3
 // @description  LMS Assistant PRO with Back Office modules only
 // @match        https://apply.creditcube.com/*
 // @match        https://portal.decisionlogic.com/CreateRequest.aspx*
@@ -16,7 +16,7 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.2";
+    const CURRENT_VERSION = "1.3";
 
   const changelog = [
   "Added button for copying information for DL requests",
@@ -1131,39 +1131,53 @@ if (MODULES.lmsToDlAutofill) {
   };
 
   if (location.href.includes("CustomerDetails.aspx")) {
-    const injectLMSButton = () => {
-      const referenceNode = document.querySelector("#ctl00_EditBankInformationLink");
-      if (!referenceNode || document.getElementById("copyForDLBtn")) return;
-
-      const wrapper = document.createElement("span");
-      wrapper.style.display = "inline-flex";
-      wrapper.style.alignItems = "center";
-      wrapper.style.gap = "4px";
-
-      referenceNode.parentNode.insertBefore(wrapper, referenceNode);
-      wrapper.appendChild(referenceNode);
-
-      const button = createStyledButton("Copy info", async () => {
-        const getText = (sel) => document.querySelector(sel)?.textContent.trim() || '';
-        const customerId = getText('#mainpropertiesview > table:nth-child(3) td:nth-child(4)');
-        const fullName = getText('#maincontent_Span_Name');
-        const [firstName, ...rest] = fullName.split(" ");
-        const lastName = rest.join(" ") || "";
-        const accountNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(6) > td:nth-child(2)');
-        const routingNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(5) > td:nth-child(2)');
-        const email = getText('#ctl00_Span_Email');
-        const phone = getText('#ctl00_Span_CellPhone > span');
-        const data = { customerId, firstName, lastName, accountNumber, routingNumber, email, phone };
-
-        try {
-          await navigator.clipboard.writeText(JSON.stringify(data));
-          showPopup("✅ Info copied to clipboard");
-        } catch {
-          showPopup("❌ Clipboard copy failed", "error");
+    const waitForElement = (selector, callback) => {
+      const targetNode = document.body;
+      const config = { childList: true, subtree: true };
+      const observer = new MutationObserver(() => {
+        const el = document.querySelector(selector);
+        if (el) {
+          observer.disconnect();
+          callback(el);
         }
-      }, "copyForDLBtn");
+      });
+      observer.observe(targetNode, config);
+    };
 
-      wrapper.appendChild(button);
+    const injectLMSButton = () => {
+      waitForElement("#ctl00_EditBankInformationLink", (referenceNode) => {
+        if (document.getElementById("copyForDLBtn")) return;
+
+        const wrapper = document.createElement("span");
+        wrapper.style.display = "inline-flex";
+        wrapper.style.alignItems = "center";
+        wrapper.style.gap = "4px";
+
+        referenceNode.parentNode.insertBefore(wrapper, referenceNode);
+        wrapper.appendChild(referenceNode);
+
+        const button = createStyledButton("Copy info", async () => {
+          const getText = (sel) => document.querySelector(sel)?.textContent.trim() || '';
+          const customerId = getText('#mainpropertiesview > table:nth-child(3) td:nth-child(4)');
+          const fullName = getText('#maincontent_Span_Name');
+          const [firstName, ...rest] = fullName.split(" ");
+          const lastName = rest.join(" ") || "";
+          const accountNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(6) > td:nth-child(2)');
+          const routingNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(5) > td:nth-child(2)');
+          const email = getText('#ctl00_Span_Email');
+          const phone = getText('#ctl00_Span_CellPhone > span');
+          const data = { customerId, firstName, lastName, accountNumber, routingNumber, email, phone };
+
+          try {
+            await navigator.clipboard.writeText(JSON.stringify(data));
+            showPopup("✅ Info copied to clipboard");
+          } catch {
+            showPopup("❌ Clipboard copy failed", "error");
+          }
+        }, "copyForDLBtn");
+
+        wrapper.appendChild(button);
+      });
     };
 
     const injectRegisterButtons = () => {
