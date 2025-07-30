@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.13
+// @version      2.14
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,12 +15,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.13";
+    const CURRENT_VERSION = "2.14";
 
   const changelog = [
-"✂️ Updated short link domain from creditcube.com to tap.cy",
-"⏳ Ignores links older than 5 days (based on Note timestamp)",
-"⚠️ Added alert: 'No fresh links found, please send a full-token link manually first'"
+"Hotfixed (Find latest Shortened link button)",
 ];
 
 
@@ -984,206 +982,204 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
 
 /*** ============ IBV Shortener ============ ***/
 if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
-    const params = new URL(document.location.href).searchParams;
-    const action = params.get("action");
-    const mode = params.get("mode");
-    const letterId = params.get("letterid");
-    const allowedIds = ["120", "139", "620"];
-    const GRAPHQL_ENDPOINT = 'https://api.creditsense.ai/';
-    const SHORTENER_DOMAIN = 'tap.cy';
-    const apiKey = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
+  const changelog = [
+    "🆕 To increase TXT delivery and reduce their blocking by providers, we added IBV Shortener module (only for TXT with Full Token)",
+    "✂️ Allows shortening of manual IBV/ESIG links directly in LMS",
+    "✅ Inserts short link into txt with one click"
+  ];
 
-    if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
-        const parseLMSDateFromCDT = (dateStr) => {
-            const [datePart, timePart, ampm] = dateStr.trim().split(/\s+/);
-            const [month, day, year] = datePart.split("/").map(Number);
-            let [hour, minute, second] = timePart.split(":" ).map(Number);
-            if (ampm === "PM" && hour !== 12) hour += 12;
-            if (ampm === "AM" && hour === 12) hour = 0;
-            return new Date(Date.UTC(year, month - 1, day, hour + 5, minute, second));
+  const params = new URL(document.location.href).searchParams;
+  const action = params.get("action");
+  const mode = params.get("mode");
+  const letterId = params.get("letterid");
+  const allowedIds = ["120", "139", "620"];
+  const GRAPHQL_ENDPOINT = 'https://api.creditsense.ai/';
+  const SHORTENER_DOMAIN = 'tap.cy';
+  const apiKey = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
+
+  if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
+    const parseLMSDateFromCDT = (dateStr) => {
+      const [datePart, timePart, ampm] = dateStr.trim().split(/\s+/);
+      const [month, day, year] = datePart.split("/").map(Number);
+      let [hour, minute, second] = timePart.split(":").map(Number);
+      if (ampm === "PM" && hour !== 12) hour += 12;
+      if (ampm === "AM" && hour === 12) hour = 0;
+      return new Date(Date.UTC(year, month - 1, day, hour + 5, minute, second));
+    };
+
+    const shortenUI = document.createElement("div");
+    shortenUI.style.cssText = `
+      background:#fff; padding:12px; border:2px solid green; border-radius:10px;
+      box-shadow:0 0 10px rgba(0,0,0,0.2); margin-bottom:15px; margin-top:15px;
+      font-family:Arial,sans-serif; min-width:400px;`;
+
+    shortenUI.innerHTML = `
+      <b>Shorten IBV Link</b><br>
+      <textarea id="linkInput" style="width:100%; height:80px; margin-top:5px; font-family:monospace;"></textarea><br>
+      <div style="margin-top:5px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" id="fetchIBV" style="flex:1;">Find latest IBV link</button>
+        <button type="button" id="fetchESIG" style="flex:1;">Find latest E-Sign link</button>
+        <button type="button" id="fetchSHORT" style="flex:1;">Find latest Shortened link</button>
+        <button type="button" id="shortenBtn" style="flex:1;">Shorten</button>
+      </div>
+      <div id="shortenResult" style="margin-top:10px; font-family:monospace"></div>
+    `;
+
+    const insertAfter = (newNode, referenceNode) => {
+      referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+    };
+
+    const waitForButtonAndInject = () => {
+      const sendBtn = document.getElementById("maincontent_TextMessageButton");
+      if (!sendBtn) return setTimeout(waitForButtonAndInject, 300);
+      insertAfter(shortenUI, sendBtn);
+
+      const renderShortLinkUI = (shortUrl) => {
+        const result = document.getElementById("shortenResult");
+        result.innerHTML = `✅ <a href="${shortUrl}" target="_blank">${shortUrl}</a> <button type="button" id="copyShort">Insert to txt</button>`;
+
+        document.getElementById("copyShort").onclick = () => {
+          if (typeof GM_setClipboard !== 'undefined') {
+            GM_setClipboard(shortUrl);
+          } else {
+            navigator.clipboard.writeText(shortUrl);
+          }
+
+          const textarea = document.getElementById("maincontent_TextAreaPlain");
+          if (textarea) {
+            const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=([a-zA-Z0-9]+|\[token_aes_cbc\])/;
+            const match = textarea.value.match(pattern);
+            if (match) {
+              textarea.value = textarea.value.replace(pattern, shortUrl);
+              textarea.style.color = 'green';
+              setTimeout(() => { textarea.style.color = ''; }, 2200);
+            }
+          }
         };
+      };
 
-        const shortenUI = document.createElement("div");
-        shortenUI.style.cssText = `
-            background:#fff; padding:12px; border:2px solid green; border-radius:10px;
-            box-shadow:0 0 10px rgba(0,0,0,0.2); margin-bottom:15px; margin-top:15px;
-            font-family:Arial,sans-serif; min-width:400px;`;
+      const fetchFromNotes = async (type) => {
+        const customerIdMatch = location.href.match(/customerid=(\d+)/);
+        if (!customerIdMatch) return alert("❌ CustomerID not found in URL");
 
-        shortenUI.innerHTML = `
-            <b>Shorten IBV Link</b><br>
-            <textarea id="linkInput" style="width:100%; height:80px; margin-top:5px; font-family:monospace;"></textarea><br>
-            <div style="margin-top:5px; display:flex; gap:10px; flex-wrap:wrap;">
-                <button type="button" id="fetchIBV" style="flex:1;">Find latest IBV link</button>
-                <button type="button" id="fetchESIG" style="flex:1;">Find latest E-Sign link</button>
-                <button type="button" id="fetchSHORT" style="flex:1;">Find latest Shortened link</button>
-                <button type="button" id="shortenBtn" style="flex:1;">Shorten</button>
-            </div>
-            <div id="shortenResult" style="margin-top:10px; font-family:monospace"></div>
-        `;
+        const customerId = customerIdMatch[1];
+        const res = await fetch(`/plm.net/customers/CustomerNotes.aspx?customerid=${customerId}&isnosection=true`);
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const rows = Array.from(doc.querySelectorAll("table.DataTable tbody tr"));
 
-        const insertAfter = (newNode, referenceNode) => {
-            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
-        };
+        const REGEX = type === "IBV"
+          ? /https:\/\/creditcube\.com\/ibv\?t=[a-zA-Z0-9]+/
+          : type === "eSig"
+            ? /https:\/\/creditcube\.com\/esig\?t=[a-zA-Z0-9]+/
+            : /https:\/\/tap\.cy\/[a-zA-Z0-9]{6,}/;
 
-        const waitForButtonAndInject = () => {
-            const sendBtn = document.getElementById("maincontent_TextMessageButton");
-            if (!sendBtn) return setTimeout(waitForButtonAndInject, 300);
-            insertAfter(shortenUI, sendBtn);
+        let found = null;
+        for (let i = rows.length - 1; i >= 0; i--) {
+          const cells = rows[i].querySelectorAll("td");
+          if (cells.length < 3) continue;
+          const dateStr = cells[0].textContent.trim();
+          const noteText = cells[2].textContent;
+          const match = noteText.match(REGEX);
+          if (match) {
+            const parsed = parseLMSDateFromCDT(dateStr);
+            const now = new Date();
+            const ageDays = (now - parsed) / (1000 * 60 * 60 * 24);
+            if (ageDays <= 5) {
+              found = { link: match[0], dateStr };
+              break;
+            }
+          }
+        }
 
-            const renderShortLinkUI = (shortUrl) => {
-                const result = document.getElementById("shortenResult");
-                result.innerHTML = `✅ <a href="${shortUrl}" target="_blank">${shortUrl}</a> <button type="button" id="copyShort">Insert to txt</button>`;
+        if (!found) {
+          alert("❌ There are no fresh links to shorten (last 5 days). Please send the Full Token link yourself first.");
+          return;
+        }
 
-                document.getElementById("copyShort").onclick = () => {
-                    if (typeof GM_setClipboard !== 'undefined') {
-                        GM_setClipboard(shortUrl);
-                    } else {
-                        navigator.clipboard.writeText(shortUrl);
-                    }
+        const parsed = parseLMSDateFromCDT(found.dateStr);
+        const now = new Date();
+        const diffMs = now - parsed;
+        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
 
-                    const textarea = document.getElementById("maincontent_TextAreaPlain");
-                    if (textarea) {
-                        const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=(\[token_aes_cbc\]|[a-zA-Z0-9]+)/;
-                        const match = textarea.value.match(pattern);
-                        if (match) {
-                            const newText = textarea.value.replace(pattern, shortUrl);
-                            textarea.value = newText;
-                            textarea.style.color = 'green';
-                            setTimeout(() => { textarea.style.color = ''; }, 2200);
-                        }
-                    }
-                };
-            };
+        const formatted = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Chicago",
+          timeZoneName: "short",
+          month: "2-digit",
+          day: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true
+        }).format(parsed);
 
-            const fetchFromNotes = async (type) => {
-                const customerIdMatch = location.href.match(/customerid=(\d+)/);
-                if (!customerIdMatch) return alert("❌ CustomerID not found in URL");
+        const input = document.getElementById("linkInput");
+        input.value = `Found ${type}: ${formatted} (${days} days and ${hours} hours ago)\n${found.link}`;
+        input.style.border = "2px solid green";
+        setTimeout(() => { input.style.border = ""; }, 2000);
 
-                const customerId = customerIdMatch[1];
-                const res = await fetch(`/plm.net/customers/CustomerNotes.aspx?customerid=${customerId}&isnosection=true`);
-                const html = await res.text();
-                const doc = new DOMParser().parseFromString(html, "text/html");
-                const rows = Array.from(doc.querySelectorAll("table.DataTable tbody tr"));
+        const shortenBtn = document.getElementById("shortenBtn");
+        if (type === "Shorten") {
+          shortenBtn.disabled = true;
+          shortenBtn.textContent = "🔒 Already Shortened";
+          renderShortLinkUI(found.link);
+        } else {
+          shortenBtn.disabled = false;
+          shortenBtn.textContent = "Shorten";
+        }
+      };
 
-                const REGEX = type === "IBV"
-                    ? /https:\/\/creditcube\.com\/ibv\?t=[a-zA-Z0-9]+/
-                    : type === "eSig"
-                    ? /https:\/\/creditcube\.com\/esig\?t=[a-zA-Z0-9]+/
-                    : /https:\/\/(creditcube\.com|tap\.cy)\/[a-zA-Z0-9]{6,}/;
+      document.getElementById("fetchIBV").onclick = () => fetchFromNotes("IBV");
+      document.getElementById("fetchESIG").onclick = () => fetchFromNotes("eSig");
+      document.getElementById("fetchSHORT").onclick = () => fetchFromNotes("Shorten");
 
-                let found = null;
-                for (let i = rows.length - 1; i >= 0; i--) {
-                    const cells = rows[i].querySelectorAll("td");
-                    if (cells.length < 3) continue;
-                    const dateStr = cells[0].textContent.trim();
-                    const noteText = cells[2].textContent;
-                    const match = noteText.match(REGEX);
-                    if (match) {
-                        const parsed = parseLMSDateFromCDT(dateStr);
-                        const now = new Date();
-                        const ageDays = (now - parsed) / (1000 * 60 * 60 * 24);
-                        if (ageDays <= 5) {
-                            found = { link: match[0], dateStr };
-                            break;
-                        }
-                    }
-                }
+      document.getElementById("shortenBtn").onclick = async function () {
+        const input = document.getElementById("linkInput").value.trim();
+        const result = document.getElementById("shortenResult");
 
-                if (!found) {
-                    alert("❌ There are no fresh links to shorten (last 5 days). Please send the Full Token link yourself first.");
-                    return;
-                }
+        const urlMatch = input.match(/https:\/\/creditcube\.com\/(ibv|esig)\?t=[a-zA-Z0-9]+/);
+        if (!urlMatch) {
+          result.innerHTML = `<span style='color:red'>❌ Error: No valid link found</span>`;
+          return;
+        }
 
-                const parsed = parseLMSDateFromCDT(found.dateStr);
-                const now = new Date();
-                const diffMs = now.getTime() - parsed.getTime();
-                const absDiff = Math.abs(diffMs);
-                const days = Math.floor(absDiff / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((absDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const direction = diffMs >= 0 ? "ago" : "from now";
+        const url = urlMatch[0];
+        result.textContent = "⏳ Shortening...";
 
-                const formatted = new Intl.DateTimeFormat("en-US", {
-                    timeZone: "America/Chicago",
-                    timeZoneName: "short",
-                    month: "2-digit",
-                    day: "2-digit",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                    hour12: true
-                }).format(parsed);
+        try {
+          const r = await fetch(GRAPHQL_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+            },
+            body: JSON.stringify({
+              query: `mutation ShortURL($url: String!, $domain: String!) {
+                shortUrl(input: { url: $url, domain: $domain }) }`,
+              variables: { url, domain: SHORTENER_DOMAIN }
+            })
+          });
 
-                const input = document.getElementById("linkInput");
-                input.value = `Found ${type}: ${formatted} (${days} days and ${hours} hours ${direction})\n${found.link}`;
-                input.style.border = "2px solid green";
-                setTimeout(() => { input.style.border = ""; }, 2000);
+          const json = await r.json();
+          const txt = json?.data?.shortUrl;
 
-                const shortenBtn = document.getElementById("shortenBtn");
-                if (type === "Shorten") {
-                    shortenBtn.disabled = true;
-                    shortenBtn.textContent = "🔒 Already Shortened";
-                    renderShortLinkUI(found.link);
-                } else {
-                    shortenBtn.disabled = false;
-                    shortenBtn.textContent = "Shorten";
-                }
-            };
+          if (!r.ok || !txt?.startsWith("http")) {
+            throw new Error("❌ Invalid or empty response: " + JSON.stringify(json));
+          }
 
-            document.getElementById("fetchIBV").onclick = () => fetchFromNotes("IBV");
-            document.getElementById("fetchESIG").onclick = () => fetchFromNotes("eSig");
-            document.getElementById("fetchSHORT").onclick = () => fetchFromNotes("Shorten");
+          renderShortLinkUI(txt);
+        } catch (e) {
+          result.innerHTML = `❌ Error: ${e.message}`;
+        }
+      };
+    };
 
-            document.getElementById("shortenBtn").onclick = async function () {
-                const input = document.getElementById("linkInput").value.trim();
-                const result = document.getElementById("shortenResult");
-
-                const urlMatch = input.match(/https:\/\/creditcube\.com\/(ibv|esig)\?t=[a-zA-Z0-9]+/);
-                if (!urlMatch) {
-                    result.innerHTML = `<span style='color:red'>❌ Error: No valid link found</span>`;
-                    return;
-                }
-
-                const url = urlMatch[0];
-                result.textContent = "⏳ Shortening...";
-
-                try {
-                    const r = await fetch(GRAPHQL_ENDPOINT, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-api-key': apiKey,
-                        },
-                        body: JSON.stringify({
-                            query: `
-                                mutation ShortURL($url: String!, $domain: String!) {
-                                    shortUrl(input: { url: $url, domain: $domain })
-                                }
-                            `,
-                            variables: {
-                                url,
-                                domain: SHORTENER_DOMAIN
-                            }
-                        })
-                    });
-
-                    const json = await r.json();
-                    const txt = json?.data?.shortUrl;
-
-                    if (!r.ok || !txt?.startsWith("http")) {
-                        throw new Error("❌ Invalid or empty response: " + JSON.stringify(json));
-                    }
-
-                    renderShortLinkUI(txt);
-                } catch (e) {
-                    result.innerHTML = `❌ Error: ${e.message}`;
-                }
-            };
-        };
-
-        waitForButtonAndInject();
-    }
+    waitForButtonAndInject();
+  }
 }
+
 
 
     /*** ============ Overpaid Check module ============ ***/
