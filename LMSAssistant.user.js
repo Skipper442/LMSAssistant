@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.2
+// @version      2.3
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
@@ -13,14 +13,12 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.2";
+    const CURRENT_VERSION = "2.3";
 
  const changelog = [
-  "🆕 To increase TXT delivery and reduce their blocking by providers, we added IBV Shortener module (only for TXT with Full Token)",
-  "✂️ Allows shortening of manual IBV/ESIG links directly in LMS",
-  "✅ Inserts short link into txt with one click"
+  "🆕 Added Chirp (LendMate) support in IBV Button Injector",
+  "✅ CRP link now works for both Yodlee and Chirp, depending on available reports"
 ];
-
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
     if (savedVersion !== CURRENT_VERSION) {
@@ -527,43 +525,84 @@ if (MODULES.lmsAssistant) {
 
 
     /*** ============ IBV Button Injector ============ ***/
+if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
+    const getLoginName = (id, type = 'Yodlee') => {
+        let url;
+        if (type === 'Yodlee') {
+            url = `https://apply.creditcube.com/plm.net/customers/reports/YodleeReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`;
+        } else if (type === 'Chirp') {
+            url = `https://apply.creditcube.com/plm.net/customers/reports/ChirpReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`;
+        }
 
-    if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
-        const getLoginName = (id) => {
-            return fetch(`https://apply.creditcube.com/plm.net/customers/reports/YodleeReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`)
-                .then(res => res.json())
-                .then(data => data?.userData?.[0]?.user?.loginName);
-        };
-
-        const waitForIBVButton = () => {
-            const jsonBtn = document.querySelector('input[value="Show JSON"]');
-            if (!jsonBtn) return setTimeout(waitForIBVButton, 500);
-            if (document.getElementById('openInCrpBtn')) return;
-
-            const btn = document.createElement('input');
-            btn.type = 'button';
-            btn.id = 'openInCrpBtn';
-            btn.value = 'Open in CRP';
-            Object.assign(btn.style, {
-                padding: '4px', fontFamily: 'Arial', fontWeight: 'bold', fontSize: '12px',
-                border: '1px solid #2e9fd8', background: '#2e9fd8 url(Images/global-button-back.png) left top repeat-x',
-                color: '#DFDFDF', cursor: 'pointer', marginLeft: '5px'
+        return fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (type === 'Yodlee') return data?.userData?.[0]?.user?.loginName;
+                if (type === 'Chirp') return data?.RequestCode;
             });
+    };
 
-            btn.onclick = async () => {
-                const select = document.getElementById('maincontent_ReportBarControl_YodleeIbvReports');
-                const selectedId = select?.value;
-                if (!selectedId) return alert('Select a report.');
-                const loginName = await getLoginName(selectedId);
+    const createButton = (onClickHandler, id) => {
+        const btn = document.createElement('input');
+        btn.type = 'button';
+        btn.id = id;
+        btn.value = 'Open in CRP';
+        Object.assign(btn.style, {
+            padding: '4px',
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+            fontSize: '12px',
+            border: '1px solid #2e9fd8',
+            background: '#2e9fd8 url(Images/global-button-back.png) left top repeat-x',
+            color: '#DFDFDF',
+            cursor: 'pointer',
+            marginLeft: '5px'
+        });
+        btn.onclick = onClickHandler;
+        return btn;
+    };
+
+    const waitForIBVButton = () => {
+        const jsonBtn = document.querySelector('input[value="Show JSON"]');
+
+        // Yodlee 
+        const yodleeSelect = document.getElementById('maincontent_ReportBarControl_YodleeIbvReports');
+        if (jsonBtn && yodleeSelect && !document.getElementById('openInCrpBtn')) {
+            const btn = createButton(async () => {
+                const selectedId = yodleeSelect?.value;
+                if (!selectedId) return alert('Select a Yodlee report.');
+                const loginName = await getLoginName(selectedId, 'Yodlee');
                 if (loginName) {
                     const crpLink = `https://ibv.creditsense.ai/report/Yodlee/${loginName}`;
                     window.open(crpLink, '_blank');
                 } else alert('loginName not found.');
-            };
+            }, 'openInCrpBtn');
             jsonBtn.after(btn);
-        };
-        waitForIBVButton();
-    }
+        }
+
+        // Chirp (LendMate)
+        const lendmateBtn = document.querySelector('#maincontent_ReportBarControl_Holder_LendMateIbvReportControls > span > span.LendMateIbvSpan.reportSpan.nowrap > input[type=button]:nth-child(2)');
+        if (lendmateBtn && !document.getElementById('openInCrpBtn_LendMate')) {
+            const chirpSelect = document.getElementById('maincontent_ReportBarControl_LendMateIbvReports');
+            const btn = createButton(async () => {
+                const selectedId = chirpSelect?.value;
+                if (!selectedId) return alert('Select a Chirp report.');
+                const requestCode = await getLoginName(selectedId, 'Chirp');
+                if (requestCode) {
+                    const crpLink = `https://ibv.creditsense.ai/report/Chirp/${requestCode}`;
+                    window.open(crpLink, '_blank');
+                } else alert('RequestCode not found.');
+            }, 'openInCrpBtn_LendMate');
+            lendmateBtn.after(btn);
+        }
+
+        if (!jsonBtn || (!yodleeSelect && !lendmateBtn)) {
+            setTimeout(waitForIBVButton, 500);
+        }
+    };
+
+    waitForIBVButton();
+}
 
     /*** ============ Email/TXT Category Filter ============ ***/
 
