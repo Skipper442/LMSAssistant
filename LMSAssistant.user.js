@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.14
+// @version      2.15
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -15,11 +15,13 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.14";
+    const CURRENT_VERSION = "2.15";
 
-  const changelog = [
-"Hotfixed (Find latest Shortened link button)",
+ const changelog = [
+  "🆕 Added Chirp support in IBV Button Injector",
+  "✅ CRP link now works for both Yodlee and Chirp, depending on available reports"
 ];
+
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -786,20 +788,26 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
 
 /*** ============ IBV Button Injector ============ ***/
 if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
-    const getLoginName = (id) => {
-        return fetch(`https://apply.creditcube.com/plm.net/customers/reports/YodleeReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`)
+    const getLoginName = (id, type = 'Yodlee') => {
+        let url;
+        if (type === 'Yodlee') {
+            url = `https://apply.creditcube.com/plm.net/customers/reports/YodleeReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`;
+        } else if (type === 'Chirp') {
+            url = `https://apply.creditcube.com/plm.net/customers/reports/ChirpReport.aspx?mode=json&savedinstantbankverificationreportid=${id}`;
+        }
+
+        return fetch(url)
             .then(res => res.json())
-            .then(data => data?.userData?.[0]?.user?.loginName);
+            .then(data => {
+                if (type === 'Yodlee') return data?.userData?.[0]?.user?.loginName;
+                if (type === 'Chirp') return data?.RequestCode;
+            });
     };
 
-    const waitForIBVButton = () => {
-        const jsonBtn = document.querySelector('input[value="Show JSON"]');
-        if (!jsonBtn) return setTimeout(waitForIBVButton, 500);
-        if (document.getElementById('openInCrpBtn')) return;
-
+    const createButton = (onClickHandler, id) => {
         const btn = document.createElement('input');
         btn.type = 'button';
-        btn.id = 'openInCrpBtn';
+        btn.id = id;
         btn.value = 'Open in CRP';
         Object.assign(btn.style, {
             padding: '4px',
@@ -812,19 +820,49 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
             cursor: 'pointer',
             marginLeft: '5px'
         });
-
-        btn.onclick = async () => {
-            const select = document.getElementById('maincontent_ReportBarControl_YodleeIbvReports');
-            const selectedId = select?.value;
-            if (!selectedId) return alert('Select a report.');
-            const loginName = await getLoginName(selectedId);
-            if (loginName) {
-                const crpLink = `https://ibv.creditsense.ai/report/Yodlee/${loginName}`;
-                window.open(crpLink, '_blank');
-            } else alert('loginName not found.');
-        };
-        jsonBtn.after(btn);
+        btn.onclick = onClickHandler;
+        return btn;
     };
+
+    const waitForIBVButton = () => {
+        const jsonBtn = document.querySelector('input[value="Show JSON"]');
+
+        // Yodlee 
+        const yodleeSelect = document.getElementById('maincontent_ReportBarControl_YodleeIbvReports');
+        if (jsonBtn && yodleeSelect && !document.getElementById('openInCrpBtn')) {
+            const btn = createButton(async () => {
+                const selectedId = yodleeSelect?.value;
+                if (!selectedId) return alert('Select a Yodlee report.');
+                const loginName = await getLoginName(selectedId, 'Yodlee');
+                if (loginName) {
+                    const crpLink = `https://ibv.creditsense.ai/report/Yodlee/${loginName}`;
+                    window.open(crpLink, '_blank');
+                } else alert('loginName not found.');
+            }, 'openInCrpBtn');
+            jsonBtn.after(btn);
+        }
+
+        // Chirp (LendMate)
+        const lendmateBtn = document.querySelector('#maincontent_ReportBarControl_Holder_LendMateIbvReportControls > span > span.LendMateIbvSpan.reportSpan.nowrap > input[type=button]:nth-child(2)');
+        if (lendmateBtn && !document.getElementById('openInCrpBtn_LendMate')) {
+            const chirpSelect = document.getElementById('maincontent_ReportBarControl_LendMateIbvReports');
+            const btn = createButton(async () => {
+                const selectedId = chirpSelect?.value;
+                if (!selectedId) return alert('Select a Chirp report.');
+                const requestCode = await getLoginName(selectedId, 'Chirp');
+                if (requestCode) {
+                    const crpLink = `https://ibv.creditsense.ai/report/Chirp/${requestCode}`;
+                    window.open(crpLink, '_blank');
+                } else alert('RequestCode not found.');
+            }, 'openInCrpBtn_LendMate');
+            lendmateBtn.after(btn);
+        }
+
+        if (!jsonBtn || (!yodleeSelect && !lendmateBtn)) {
+            setTimeout(waitForIBVButton, 500);
+        }
+    };
+
     waitForIBVButton();
 }
     /*** ============ Copy/Paste LMS ============ ***/
@@ -1179,8 +1217,6 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
     waitForButtonAndInject();
   }
 }
-
-
 
     /*** ============ Overpaid Check module ============ ***/
     if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
