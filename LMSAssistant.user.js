@@ -16,7 +16,7 @@
     const CURRENT_VERSION = "2.3";
 
  const changelog = [
-  "🆕 Added Chirp (LendMate) support in IBV Button Injector",
+  "🆕 Added Chirp support in IBV Button Injector",
   "✅ CRP link now works for both Yodlee and Chirp, depending on available reports"
 ];
 
