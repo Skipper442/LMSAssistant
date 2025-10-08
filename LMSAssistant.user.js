@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.3
+// @version      1.4
 // @description  LMS Assistant PRO with Back Office modules only
 // @match        https://apply.creditcube.com/*
 // @match        https://portal.decisionlogic.com/CreateRequest.aspx*
@@ -16,12 +16,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.3";
+    const CURRENT_VERSION = "1.4";
 
-  const changelog = [
-  "Added button for copying information for DL requests",
-];
-
+    const changelog = [
+      "Added aler for RTF states. ",
+    ];
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
     if (savedVersion !== CURRENT_VERSION) {
@@ -85,42 +84,44 @@
         document.body.appendChild(box);
     }
 
-const MODULES = {
-    lmsAssistant: true, // Logic will apply but module is hidden
-    emailFilter: true,
-    qcSearch: true,
-    overpaidCheck: true,
-    ibvShortener: true,
-    remarkFilter: true,
-  lmsToDlAutofill: true
+    const MODULES = {
+        lmsAssistant: true, // Logic will apply but module is hidden
+        emailFilter: true,
+        qcSearch: true,
+        overpaidCheck: true,
+        ibvShortener: true,
+        remarkFilter: true,
+        lmsToDlAutofill: true,
+        rtfAlert: true
+    };
 
-};
+    const MODULE_LABELS = {
+        emailFilter: 'Email Filter',
+        qcSearch: 'QC Search',
+        overpaidCheck: 'Overpaid Check',
+        ibvShortener: 'IBV Shortener',
+        lmsToDlAutofill: "Register Copy Buttons",
+        remarkFilter: 'Remark Filter',
+        rtfAlert: 'RTF Alert'
+    };
 
-const MODULE_LABELS = {
-    emailFilter: 'Email Filter',
-    qcSearch: 'QC Search',
-    overpaidCheck: 'Overpaid Check',
-    ibvShortener: 'IBV Shortener',
-    lmsToDlAutofill: "Register Copy Buttons",
-    remarkFilter: 'Remark Filter'
-};
+    const MODULE_DESCRIPTIONS = {
+        lmsAssistant: "Highlights states, manages call hours",
+        emailFilter: "Filters the list of email templates",
+        qcSearch: "QC Search — quick phone-based lookup",
+        overpaidCheck: "Checks overpaid status and options for potential refinance",
+        ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
+        lmsToDlAutofill: "Adds buttons to copy customer info for 3rd party registration and verification",
+        remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones",
+        rtfAlert: "Popup if state matches RTF list"
+    };
 
-const MODULE_DESCRIPTIONS = {
-    lmsAssistant: "Highlights states, manages call hours",
-    emailFilter: "Filters the list of email templates",
-    qcSearch: "QC Search — quick phone-based lookup",
-    overpaidCheck: "Checks overpaid status and options for potential refinance",
-    ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
-    lmsToDlAutofill: "Adds buttons to copy customer info for 3rd party registration and verification",
-    remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones"
-};
-
-Object.keys(MODULES).forEach(key => {
+    Object.keys(MODULES).forEach(key => {
         const saved = localStorage.getItem(`lms_module_${key}`);
         if (saved !== null) MODULES[key] = JSON.parse(saved);
     });
 
- /*** ============ TopMenu ============ ***/
+    /*** ============ TopMenu ============ ***/
     function findHelpMenuItem() {
         const menuCells = document.querySelectorAll('#TopMenu td');
         for (const cell of menuCells) {
@@ -176,7 +177,6 @@ Object.keys(MODULES).forEach(key => {
             boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
         });
 
-
         const style = document.createElement('style');
         style.textContent = `
 .lms-switch {
@@ -216,7 +216,9 @@ Object.keys(MODULES).forEach(key => {
 `;
         document.head.appendChild(style);
 
+        document.body.appendChild(dropdown);
 
+        // Build toggles
         Object.keys(MODULES).forEach(key => {
             if (key === 'lmsAssistant') return;
             const wrapper = document.createElement('div');
@@ -248,7 +250,6 @@ Object.keys(MODULES).forEach(key => {
             const moduleName = document.createElement('span');
             moduleName.textContent = MODULE_LABELS[key];
 
-            // Info icon
             const helpIcon = document.createElement('img');
             helpIcon.src = 'https://cdn-icons-png.flaticon.com/512/108/108153.png';
             helpIcon.alt = 'Info';
@@ -347,8 +348,6 @@ Object.keys(MODULES).forEach(key => {
         });
         dropdown.appendChild(ideasWrapper);
 
-        document.body.appendChild(dropdown);
-
         newMenuItem.addEventListener('mouseover', () => {
             dropdown.style.display = 'block';
             newMenuItem.style.backgroundColor = 'rgb(175, 209, 255)';
@@ -380,77 +379,76 @@ Object.keys(MODULES).forEach(key => {
 
     injectTopMenuPanel();
 
-
-/*** ============ LMS Assistant (always enabled, not in menu) ============ ***/
-if (MODULES.lmsAssistant) {
-    const callHours = { start: '07:00:00', end: '20:00:00' };
-    const tzData = {
-        'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
-        'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
-        'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
-        'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
-        'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
-        'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
-        'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
-        'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
-        'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
-        'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
-        'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
-        'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
-        'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
-        'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
-    };
-
-    function getLocalTime(state) {
-        const currTime = new Date();
-        return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
-    }
-
-    function isCallable(state) {
-        const time = getLocalTime(state);
-        return time > callHours.start && time < callHours.end;
-    }
-
-    function makePhoneClickable(phoneEl) {
-        if (!phoneEl || phoneEl.dataset.briaLinked) return null;
-
-        const rawNumber = phoneEl.textContent.trim();
-        const sanitizedNumber = rawNumber.replace(/[^\d]/g, '');
-        if (sanitizedNumber.length < 7) return null;
-
-        const span = document.createElement('span');
-        span.textContent = rawNumber;
-        span.title = 'Click to call via Bria';
-        span.style.cursor = 'pointer';
-        span.style.display = 'inline';
-        span.style.textDecoration = 'underline';
-        span.style.textUnderlineOffset = '2px';
-        span.style.transition = 'opacity 0.2s ease, text-decoration-color 0.2s ease';
-        span.style.textDecorationColor = 'inherit';
-        span.className = phoneEl.className;
-
-        span.onmouseover = () => {
-            span.style.opacity = '0.8';
-            span.style.textDecorationColor = '#28a745';
+    /*** ============ LMS Assistant (always enabled, not in menu) ============ ***/
+    if (MODULES.lmsAssistant) {
+        const callHours = { start: '07:00:00', end: '20:00:00' };
+        const tzData = {
+            'AL': 'America/Chicago','AK': 'America/Anchorage','AZ': 'America/Phoenix','AR': 'America/Chicago',
+            'CA': 'America/Los_Angeles','CO': 'America/Denver','CT': 'America/New_York','DE': 'America/New_York',
+            'FL': 'America/New_York','GA': 'America/New_York','HI': 'Pacific/Honolulu','ID': 'America/Denver',
+            'IL': 'America/Chicago','IN': 'America/Indiana/Indianapolis','IA': 'America/Chicago','KS': 'America/Chicago',
+            'KY': 'America/New_York','LA': 'America/Chicago','ME': 'America/New_York','MD': 'America/New_York',
+            'MA': 'America/New_York','MI': 'America/New_York','MN': 'America/Chicago','MS': 'America/Chicago',
+            'MO': 'America/Chicago','MT': 'America/Denver','NE': 'America/Chicago','NV': 'America/Los_Angeles',
+            'NH': 'America/New_York','NJ': 'America/New_York','NM': 'America/Denver','NY': 'America/New_York',
+            'NC': 'America/New_York','ND': 'America/North_Dakota/Center','OH': 'America/New_York','OK': 'America/Chicago',
+            'OR': 'America/Los_Angeles','PA': 'America/New_York','RI': 'America/New_York','SC': 'America/New_York',
+            'SD': 'America/Chicago','TN': 'America/Chicago','TX': 'America/Chicago','UT': 'America/Denver',
+            'VT': 'America/New_York','VA': 'America/New_York','WA': 'America/Los_Angeles','WV': 'America/New_York',
+            'WI': 'America/Chicago','WY': 'America/Denver','AS': 'Pacific/Samoa','GU': 'Pacific/Guam',
+            'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
         };
-        span.onmouseout = () => {
-            span.style.opacity = '1';
+
+        function getLocalTime(state) {
+            const currTime = new Date();
+            return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
+        }
+
+        function isCallable(state) {
+            const time = getLocalTime(state);
+            return time > callHours.start && time < callHours.end;
+        }
+
+        function makePhoneClickable(phoneEl) {
+            if (!phoneEl || phoneEl.dataset.briaLinked) return null;
+
+            const rawNumber = phoneEl.textContent.trim();
+            const sanitizedNumber = rawNumber.replace(/[^\d]/g, '');
+            if (sanitizedNumber.length < 7) return null;
+
+            const span = document.createElement('span');
+            span.textContent = rawNumber;
+            span.title = 'Click to call via Bria';
+            span.style.cursor = 'pointer';
+            span.style.display = 'inline';
+            span.style.textDecoration = 'underline';
+            span.style.textUnderlineOffset = '2px';
+            span.style.transition = 'opacity 0.2s ease, text-decoration-color 0.2s ease';
             span.style.textDecorationColor = 'inherit';
-        };
+            span.className = phoneEl.className;
 
-        span.onclick = () => {
-    const number = `sip:211${sanitizedNumber}`;
+            span.onmouseover = () => {
+                span.style.opacity = '0.8';
+                span.style.textDecorationColor = '#28a745';
+            };
+            span.onmouseout = () => {
+                span.style.opacity = '1';
+                span.style.textDecorationColor = 'inherit';
+            };
 
-    const isFirstTime = !localStorage.getItem('briaConfirmed');
+            span.onclick = () => {
+                const number = `sip:211${sanitizedNumber}`;
 
-    if (isFirstTime) {
-        localStorage.setItem('briaConfirmed', 'true');
-        window.open(number, '_blank');
-        alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
-    } else {
-        const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
-        if (popup) {
-            popup.document.write(`
+                const isFirstTime = !localStorage.getItem('briaConfirmed');
+
+                if (isFirstTime) {
+                    localStorage.setItem('briaConfirmed', 'true');
+                    window.open(number, '_blank');
+                    alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
+                } else {
+                    const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
+                    if (popup) {
+                        popup.document.write(`
                 <html>
                     <head><title></title></head>
                     <body>
@@ -461,111 +459,110 @@ if (MODULES.lmsAssistant) {
                     </body>
                 </html>
             `);
-        } else {
-            alert("The pop-up has been blocked. Please allow it in your browser.");
-        }
-    }
-};
-
-
-        phoneEl.replaceWith(span);
-        span.dataset.briaLinked = 'true';
-        return span;
-    }
-
-    function showStyledPopup(title, items, noIcon = false) {
-        const box = document.createElement("div");
-        const header = document.createElement("h3");
-        header.innerHTML = noIcon ? `${title}` : `<span style="color: red;">📌</span> ${title}`;
-        header.style.marginBottom = "10px";
-
-        const text = document.createElement("div");
-        text.innerHTML = items.map(txt => `• ${txt}`).join("<br>");
-        text.style.textAlign = "left";
-
-        const closeBtn = document.createElement("button");
-        closeBtn.textContent = "OK";
-        Object.assign(closeBtn.style, {
-            marginTop: "10px", padding: "4px 12px", border: "1px solid #a27c33", borderRadius: "4px",
-            background: "#5c4400", backgroundImage: "url(Images/global-button-back.png)", backgroundRepeat: "repeat-x",
-            color: "#fff", fontWeight: "bold", cursor: "pointer", fontFamily: "Arial, Helvetica, sans-serif"
-        });
-        closeBtn.onclick = () => box.remove();
-
-        Object.assign(box.style, {
-            position: "fixed", top: "20px", left: "50%", transform: "translateX(-50%)",
-            backgroundColor: "#fff3cd", color: "#5c4400", padding: "15px 25px", borderRadius: "10px",
-            fontSize: "15px", fontFamily: "Segoe UI, sans-serif", fontWeight: "500", zIndex: "99999",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.4)", maxWidth: "90%", textAlign: "center"
-        });
-
-        box.appendChild(header);
-        box.appendChild(text);
-        box.appendChild(closeBtn);
-        document.body.appendChild(box);
-    }
-
-    if (location.href.includes('CustomerDetails.aspx?')) {
-        togglepin();
-
-        const observer = new MutationObserver(() => {
-            const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
-            const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
-            const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
-            const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
-            const statusElem = document.querySelector('#ctl00_LoansRepeater_Span_Loan_Status_0');
-            const container = statusElem?.closest('td');
-            const headerDiv = document.querySelector("div.Header");
-            const profileTable = document.querySelector("table.ProfileProperties");
-
-            if (!custCell || !cellPhone || !homePhone || !sendBtn || !headerDiv || !profileTable) return;
-
-            const custState = custCell.textContent.trim().substring(0, 2);
-            const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
-            if (unsupportedStates.includes(custState)) {
-                showStyledPopup("Unsupported State", [`Customer from ${custState}. Reloan not allowed.`], true);
-            }
-
-            [cellPhone, homePhone].forEach(phone => {
-                const span = makePhoneClickable(phone);
-                if (span) {
-                    span.style.fontWeight = '800';
-                    span.style.color = isCallable(custState) ? 'green' : 'red';
+                    } else {
+                        alert("The pop-up has been blocked. Please allow it in your browser.");
+                    }
                 }
+            };
+
+            phoneEl.replaceWith(span);
+            span.dataset.briaLinked = 'true';
+            return span;
+        }
+
+        function showStyledPopup(title, items, noIcon = false) {
+            const box = document.createElement("div");
+            const header = document.createElement("h3");
+            header.innerHTML = noIcon ? `${title}` : `<span style="color: red;">📌</span> ${title}`;
+            header.style.marginBottom = "10px";
+
+            const text = document.createElement("div");
+            text.innerHTML = items.map(txt => `• ${txt}`).join("<br>");
+            text.style.textAlign = "left";
+
+            const closeBtn = document.createElement("button");
+            closeBtn.textContent = "OK";
+            Object.assign(closeBtn.style, {
+                marginTop: "10px", padding: "4px 12px", border: "1px solid #a27c33", borderRadius: "4px",
+                background: "#5c4400", backgroundImage: "url(Images/global-button-back.png)", backgroundRepeat: "repeat-x",
+                color: "#fff", fontWeight: "bold", cursor: "pointer", fontFamily: "Arial, Helvetica, sans-serif"
+            });
+            closeBtn.onclick = () => box.remove();
+
+            Object.assign(box.style, {
+                position: "fixed", top: "20px", left: "50%", transform: "translateX(-50%)",
+                backgroundColor: "#fff3cd", color: "#5c4400", padding: "15px 25px", borderRadius: "10px",
+                fontSize: "15px", fontFamily: "Segoe UI, sans-serif", fontWeight: "500", zIndex: "99999",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.4)", maxWidth: "90%", textAlign: "center"
             });
 
-            const followUps = Array.from(document.querySelectorAll(".tr-followup td.td1")).map(td => td.innerText.trim());
-            if (followUps.length > 0) {
-                showStyledPopup("Follow-Up Reminder", followUps);
-            }
+            box.appendChild(header);
+            box.appendChild(text);
+            box.appendChild(closeBtn);
+            document.body.appendChild(box);
+        }
 
-            const notesButton = document.querySelector('#ctl00_LoansRepeater_NotesLink_0');
-            const containerId = document.querySelector('#LastLoanSection [id^="loan_"]')?.id;
-            if (!notesButton || !containerId) return;
+        // CustomerDetails logic
+        if (location.href.includes('CustomerDetails.aspx?')) {
+            togglepin();
 
-            const notesSpan = notesButton.parentElement;
-            const statusText = container?.innerText || '';
+            const observer = new MutationObserver(() => {
+                const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
+                const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
+                const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
+                const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
+                const statusElem = document.querySelector('#ctl00_LoansRepeater_Span_Loan_Status_0');
+                const container = statusElem?.closest('td');
+                const headerDiv = document.querySelector("div.Header");
+                const profileTable = document.querySelector("table.ProfileProperties");
 
-            if (statusText.includes("AA Call In Progress") && !document.getElementById("cancelVoiceBtn")) {
-                const [, loanId] = containerId.split('_');
+                if (!custCell || !cellPhone || !homePhone || !sendBtn || !headerDiv || !profileTable) return;
 
-                const cancelBtn = document.createElement("input");
-                cancelBtn.type = "button";
-                cancelBtn.id = "cancelVoiceBtn";
-                cancelBtn.value = "Cancel Voice Bot Call";
-                Object.assign(cancelBtn.style, {
-                    marginRight: "6px", padding: "4px 8px", fontSize: "12px", fontWeight: "bold",
-                    fontFamily: "Arial, Helvetica, sans-serif", background: "#f33", color: "#fff",
-                    border: "1px solid #a00", cursor: "pointer"
+                const custState = custCell.textContent.trim().substring(0, 2);
+                const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
+                if (unsupportedStates.includes(custState)) {
+                    showStyledPopup("Unsupported State", [`Customer from ${custState}. Reloan not allowed.`], true);
+                }
+
+                [cellPhone, homePhone].forEach(phone => {
+                    const span = makePhoneClickable(phone);
+                    if (span) {
+                        span.style.fontWeight = '800';
+                        span.style.color = isCallable(custState) ? 'green' : 'red';
+                    }
                 });
 
-                cancelBtn.onclick = function () {
-                    if (!confirm("Are you sure you want to cancel voice bot call?")) return;
+                const followUps = Array.from(document.querySelectorAll(".tr-followup td.td1")).map(td => td.innerText.trim());
+                if (followUps.length > 0) {
+                    showStyledPopup("Follow-Up Reminder", followUps);
+                }
 
-                    if (!document.getElementById('loader-style')) {
-                        const style = document.createElement('style');
-                        style.id = 'loader-style';
-                        style.innerHTML = `
+                const notesButton = document.querySelector('#ctl00_LoansRepeater_NotesLink_0');
+                const containerId = document.querySelector('#LastLoanSection [id^="loan_"]')?.id;
+                if (!notesButton || !containerId) return;
+
+                const notesSpan = notesButton.parentElement;
+                const statusText = container?.innerText || '';
+
+                if (statusText.includes("AA Call In Progress") && !document.getElementById("cancelVoiceBtn")) {
+                    const [, loanId] = containerId.split('_');
+
+                    const cancelBtn = document.createElement("input");
+                    cancelBtn.type = "button";
+                    cancelBtn.id = "cancelVoiceBtn";
+                    cancelBtn.value = "Cancel Voice Bot Call";
+                    Object.assign(cancelBtn.style, {
+                        marginRight: "6px", padding: "4px 8px", fontSize: "12px", fontWeight: "bold",
+                        fontFamily: "Arial, Helvetica, sans-serif", background: "#f33", color: "#fff",
+                        border: "1px solid #a00", cursor: "pointer"
+                    });
+                    cancelBtn.onclick = function () {
+                        if (!confirm("Are you sure you want to cancel voice bot call?")) return;
+
+                        if (!document.getElementById('loader-style')) {
+                            const style = document.createElement('style');
+                            style.id = 'loader-style';
+                            style.innerHTML = `
                             .loader-container {
                                 position: fixed; top: 0; left: 0; width: 100%; height: 100%;
                                 background-color: rgba(255,255,255,0.7); display: flex;
@@ -580,200 +577,271 @@ if (MODULES.lmsAssistant) {
                                 0% { transform: rotate(0deg); }
                                 100% { transform: rotate(360deg); }
                             }`;
-                        document.head.appendChild(style);
-                    }
-
-                    const loaderContainer = document.createElement("div");
-                    loaderContainer.className = "loader-container";
-                    loaderContainer.id = "page-loader";
-                    const loader = document.createElement("div");
-                    loader.className = "loader";
-                    loaderContainer.appendChild(loader);
-                    document.body.appendChild(loaderContainer);
-
-                    const domain = "https://ibv.creditsense.ai";
-                    const width = 600, height = 400;
-                    const left = (screen.width - width) / 2;
-                    const top = (screen.height - height) / 2;
-
-                    const newWindow = window.open(
-                        `${domain}/cancel-voice-bot-call?layout=embedded&loanId=${loanId}`,
-                        'newWindow',
-                        `width=${width},height=${height},left=${left},top=${top},location=no`
-                    );
-
-                    const timer = setInterval(() => {
-                        if (newWindow.closed) {
-                            clearInterval(timer);
-                            location.reload();
+                            document.head.appendChild(style);
                         }
-                    }, 100);
 
-                    const listener = function (event) {
-                        if (event.origin !== domain) return;
-                        window.removeEventListener("message", listener);
-                        newWindow.close();
+                        const loaderContainer = document.createElement("div");
+                        loaderContainer.className = "loader-container";
+                        loaderContainer.id = "page-loader";
+                        const loader = document.createElement("div");
+                        loader.className = "loader";
+                        loaderContainer.appendChild(loader);
+                        document.body.appendChild(loaderContainer);
+
+                        const domain = "https://ibv.creditsense.ai";
+                        const width = 600, height = 400;
+                        const left = (screen.width - width) / 2;
+                        const top = (screen.height - height) / 2;
+
+                        const newWindow = window.open(
+                            `${domain}/cancel-voice-bot-call?layout=embedded&loanId=${loanId}`,
+                            'newWindow',
+                            `width=${width},height=${height},left=${left},top=${top},location=no`
+                        );
+
+                        const timer = setInterval(() => {
+                            if (newWindow.closed) {
+                                clearInterval(timer);
+                                location.reload();
+                            }
+                        }, 100);
+
+                        const listener = function (event) {
+                            if (event.origin !== domain) return;
+                            window.removeEventListener("message", listener);
+                            newWindow.close();
+                        };
+                        window.addEventListener("message", listener);
                     };
-                    window.addEventListener("message", listener);
-                };
 
-                notesSpan.before(cancelBtn);
-            }
+                    notesSpan.before(cancelBtn);
+                }
 
-            observer.disconnect();
-        });
-
-        observer.observe(document.body, { childList: true, subtree: true });
-    }
-
-    if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
-        const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
-        leads.forEach(row => {
-            const cell = row.querySelector('td:nth-child(9)');
-            const state = cell.textContent.trim().substring(0, 2);
-            cell.style.fontWeight = '800';
-            cell.style.color = isCallable(state) ? 'green' : 'red';
-        });
-    }
-}
- /*** ============ Email/TXT Category Filter ============ ***/
-
-if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
-    const rawCategories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
-    const renamedCategories = {
-        "Loan Letters": "Support",
-        "Collection Letters": "Collection",
-        "Marketing Letters": "Marketing",
-        "DRS Letters": "DRS"
-    };
-
-    const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
-    const PANEL_ID = 'emailCategoryControlPanel';
-
-    const getSelectedLetterType = () => {
-        const select = document.querySelector('select[id$="LetterAction_0"]');
-        return select?.value || "send";
-    };
-
-    const getLetterSelectId = () => {
-        const type = getSelectedLetterType();
-        switch (type) {
-            case "send": return "#ctl00_LoansRepeater_Letter_ForEmail_0";
-            case "textmessage": return "#ctl00_LoansRepeater_Letter_ForTextMessage_0";
-            default: return null;
-        }
-    };
-
-    const createControlPanel = () => {
-        if (document.getElementById(PANEL_ID)) return;
-
-        const panel = document.createElement('div');
-        panel.id = PANEL_ID;
-        panel.style.marginLeft = '10px';
-        panel.style.display = 'inline-block';
-
-        const labelText = document.createElement('span');
-        labelText.textContent = "Categories:";
-        labelText.style.marginRight = "10px";
-        panel.appendChild(labelText);
-
-        rawCategories.forEach(cat => {
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.checked = JSON.parse(localStorage.getItem(`show_${cat}`) || "true");
-            checkbox.style.marginRight = '5px';
-            checkbox.dataset.original = cat;
-            checkbox.addEventListener('change', () => {
-                localStorage.setItem(`show_${cat}`, checkbox.checked);
-                filterSelectOptions();
+                observer.disconnect();
             });
 
-            const label = document.createElement('label');
-            label.style.marginRight = '10px';
-            label.style.cursor = 'pointer';
-            label.dataset.category = cat;
-            label.appendChild(checkbox);
-            label.appendChild(document.createTextNode(renamedCategories[cat] || cat));
-            panel.appendChild(label);
-        });
+            observer.observe(document.body, { childList: true, subtree: true });
+        }
 
-        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
-        if (sendButton && sendButton.parentElement) {
-            sendButton.parentElement.insertBefore(panel, sendButton.nextSibling?.nextSibling || null);
+        // Pending report
+        if (location.href.includes('LoansReport.aspx?reportpreset=pending')) {
+            const leads = document.querySelectorAll('#Page_Form table.DataTable.FixedHeader tbody tr:not(:last-child)');
+            leads.forEach(row => {
+                const cell = row.querySelector('td:nth-child(9)');
+                const state = cell.textContent.trim().substring(0, 2);
+                cell.style.fontWeight = '800';
+                cell.style.color = isCallable(state) ? 'green' : 'red';
+            });
+        }
+
+        // expose showStyledPopup for other modules in this closure
+        window.__lmsShowStyledPopup = showStyledPopup;
+    }
+
+   /*** ============ RTF alert (stable) ============ ***/
+if (MODULES.rtfAlert && location.href.includes('CustomerDetails')) {
+    const RTF_STATES = ['WA','TN','NJ','AL','MD','IN','MI','NH','NV','OH','RI','SD'];
+    const STATE_CELL_SELECTOR = '#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(2) > td:nth-child(4)';
+
+    let shownOnce = false;
+    let isShowing = false;
+
+    const extractState = () => {
+        const cell = document.querySelector(STATE_CELL_SELECTOR);
+        if (!cell) return '';
+        const txt = cell.textContent?.toUpperCase() || '';
+        const m = txt.match(/\b[A-Z]{2}\b/);
+        return m ? m[0] : '';
+    };
+
+    const showRtfPopup = () => {
+
+        if (isShowing) return;
+        isShowing = true;
+
+        const showStyled = window.__lmsShowStyledPopup;
+        const done = () => { isShowing = false; };
+
+        if (typeof showStyled === 'function') {
+
+            showStyled('ATTENTION! RTF State - PLS CHECK:', [
+                'IF ACTIVE',
+                'IF REAL TIME',
+                'CHECK TIME OF APPROVAL'
+            ], true);
+
+            setTimeout(done, 300);
+        } else {
+            alert('ATTENTION!\n RTF State - PLS CHECK:\n- IF ACTIVE\n- IF REAL TIME\n- Check TIME OF APPROVAL');
+            done();
         }
     };
 
-    const filterSelectOptions = () => {
-        const selectId = getLetterSelectId();
-        if (!selectId) return;
+    const tryAlert = () => {
+        if (shownOnce) return;
+        const state = extractState();
+        if (state && RTF_STATES.includes(state)) {
+            shownOnce = true;
+            showRtfPopup();
 
-        const select = document.querySelector(selectId);
-        if (!select) return;
-
-        const letterType = getSelectedLetterType();
-
-        const marketingLabel = [...document.querySelectorAll(`#${PANEL_ID} label`)].find(lbl => lbl.dataset.category === "Marketing Letters");
-        if (marketingLabel) {
-            marketingLabel.style.display = (letterType === "textmessage") ? "none" : "inline-block";
+            observer.disconnect();
         }
+    };
 
-        let currentCategory = null;
-        Array.from(select.options).forEach(option => {
-            const text = option.textContent.trim();
 
-            if (rawCategories.some(cat => text === `-- ${cat} --`)) {
-                currentCategory = rawCategories.find(cat => text === `-- ${cat} --`);
-                option.style.display = '';
+    const start = () => setTimeout(tryAlert, 300);
+
+    const observer = new MutationObserver(() => {
+
+        clearTimeout(observer.__t);
+        observer.__t = setTimeout(tryAlert, 200);
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    start();
+
+    window.addEventListener('beforeunload', () => observer.disconnect());
+}
+
+
+    /*** ============ Email/TXT Category Filter ============ ***/
+    if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
+        const rawCategories = ["Loan Letters", "Collection Letters", "Marketing Letters", "DRS Letters"];
+        const renamedCategories = {
+            "Loan Letters": "Support",
+            "Collection Letters": "Collection",
+            "Marketing Letters": "Marketing",
+            "DRS Letters": "DRS"
+        };
+
+        const unwantedEmails = ["Adv Action Test", "TEST TEST TEST DO NOT SEND"];
+        const PANEL_ID = 'emailCategoryControlPanel';
+
+        const getSelectedLetterType = () => {
+            const select = document.querySelector('select[id$="LetterAction_0"]');
+            return select?.value || "send";
+        };
+
+        const getLetterSelectId = () => {
+            const type = getSelectedLetterType();
+            switch (type) {
+                case "send": return "#ctl00_LoansRepeater_Letter_ForEmail_0";
+                case "textmessage": return "#ctl00_LoansRepeater_Letter_ForTextMessage_0";
+                default: return null;
+            }
+        };
+
+        const createControlPanel = () => {
+            if (document.getElementById(PANEL_ID)) return;
+
+            const panel = document.createElement('div');
+            panel.id = PANEL_ID;
+            panel.style.marginLeft = '10px';
+            panel.style.display = 'inline-block';
+
+            const labelText = document.createElement('span');
+            labelText.textContent = "Categories:";
+            labelText.style.marginRight = "10px";
+            panel.appendChild(labelText);
+
+            rawCategories.forEach(cat => {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = JSON.parse(localStorage.getItem(`show_${cat}`) || "true");
+                checkbox.style.marginRight = '5px';
+                checkbox.dataset.original = cat;
+                checkbox.addEventListener('change', () => {
+                    localStorage.setItem(`show_${cat}`, checkbox.checked);
+                    filterSelectOptions();
+                });
+
+                const label = document.createElement('label');
+                label.style.marginRight = '10px';
+                label.style.cursor = 'pointer';
+                label.dataset.category = cat;
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(renamedCategories[cat] || cat));
+                panel.appendChild(label);
+            });
+
+            const sendButton = document.querySelector('input[type="submit"][value="Send"]');
+            if (sendButton && sendButton.parentElement) {
+                sendButton.parentElement.insertBefore(panel, sendButton.nextSibling?.nextSibling || null);
+            }
+        };
+
+        const filterSelectOptions = () => {
+            const selectId = getLetterSelectId();
+            if (!selectId) return;
+
+            const select = document.querySelector(selectId);
+            if (!select) return;
+
+            const letterType = getSelectedLetterType();
+
+            const marketingLabel = [...document.querySelectorAll(`#${PANEL_ID} label`)].find(lbl => lbl.dataset.category === "Marketing Letters");
+            if (marketingLabel) {
+                marketingLabel.style.display = (letterType === "textmessage") ? "none" : "inline-block";
+            }
+
+            let currentCategory = null;
+            Array.from(select.options).forEach(option => {
+                const text = option.textContent.trim();
+
+                if (rawCategories.some(cat => text === `-- ${cat} --`)) {
+                    currentCategory = rawCategories.find(cat => text === `-- ${cat} --`);
+                    option.style.display = '';
+                    return;
+                }
+
+                let show = true;
+                if (letterType === "send") {
+                    const isDRS = text.includes("[z3RDParty]");
+                    const showCurrent = currentCategory && JSON.parse(localStorage.getItem(`show_${currentCategory}`) || "true");
+                    show = !unwantedEmails.includes(text) && ((showCurrent && !isDRS) || (isDRS && JSON.parse(localStorage.getItem("show_DRS Letters") || "false")));
+                } else if (letterType === "textmessage") {
+                    const isSupport = text.includes("(Sup)");
+                    const isCollection = text.includes("(Coll)");
+                    const isDRS = text.includes("{zTXT}") || text.includes("(3RDParty)");
+
+                    const showSupport = JSON.parse(localStorage.getItem("show_Loan Letters") || "true");
+                    const showCollection = JSON.parse(localStorage.getItem("show_Collection Letters") || "true");
+                    const showDRS = JSON.parse(localStorage.getItem("show_DRS Letters") || "true");
+
+                    show =
+                        (isSupport && showSupport) ||
+                        (isCollection && showCollection && !isDRS) ||
+                        (isDRS && showDRS);
+                }
+                option.style.display = show ? '' : 'none';
+            });
+        };
+
+        const waitForSendButton = () => {
+            const sendButton = document.querySelector('input[type="submit"][value="Send"]');
+            if (!sendButton) {
+                requestAnimationFrame(waitForSendButton);
                 return;
             }
 
-            let show = true;
-            if (letterType === "send") {
-                const isDRS = text.includes("[z3RDParty]");
-                const showCurrent = currentCategory && JSON.parse(localStorage.getItem(`show_${currentCategory}`) || "true");
-                show = !unwantedEmails.includes(text) && ((showCurrent && !isDRS) || (isDRS && JSON.parse(localStorage.getItem("show_DRS Letters") || "false")));
-            } else if (letterType === "textmessage") {
-                const isSupport = text.includes("(Sup)");
-                const isCollection = text.includes("(Coll)");
-                const isDRS = text.includes("{zTXT}") || text.includes("(3RDParty)");
+            createControlPanel();
+            filterSelectOptions();
 
-                const showSupport = JSON.parse(localStorage.getItem("show_Loan Letters") || "true");
-                const showCollection = JSON.parse(localStorage.getItem("show_Collection Letters") || "true");
-                const showDRS = JSON.parse(localStorage.getItem("show_DRS Letters") || "true");
-
-                show =
-                    (isSupport && showSupport) ||
-                    (isCollection && showCollection && !isDRS) ||
-                    (isDRS && showDRS);
+            const letterTypeSelector = document.querySelector('select[id$="LetterAction_0"]');
+            if (letterTypeSelector) {
+                letterTypeSelector.addEventListener("change", () => {
+                    setTimeout(() => {
+                        filterSelectOptions();
+                    }, 50);
+                });
             }
-            option.style.display = show ? '' : 'none';
-        });
-    };
+        };
 
-    const waitForSendButton = () => {
-        const sendButton = document.querySelector('input[type="submit"][value="Send"]');
-        if (!sendButton) {
-            requestAnimationFrame(waitForSendButton);
-            return;
-        }
+        const observer = new MutationObserver(waitForSendButton);
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
 
-        createControlPanel();
-        filterSelectOptions();
-
-        const letterTypeSelector = document.querySelector('select[id$="LetterAction_0"]');
-        if (letterTypeSelector) {
-            letterTypeSelector.addEventListener("change", () => {
-                setTimeout(() => {
-                    filterSelectOptions();
-                }, 50);
-            });
-        }
-    };
-
-    const observer = new MutationObserver(waitForSendButton);
-    observer.observe(document.body, { childList: true, subtree: true });
-}
- /*** ============ QC LMS Search Assistant ============ ***/
+    /*** ============ QC LMS Search Assistant ============ ***/
     if (MODULES.qcSearch && location.href.includes('CustomersReport')) {
         const getElement = (selector) => document.querySelector(selector);
         const getElements = (selector) => document.querySelectorAll(selector);
@@ -835,71 +903,71 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
         if (element) element.textContent = 'Quick Search';
     }
 
-/*** ============ Remark Filter ============ ***/
-if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
-    const waitForRemarkBlock = () => {
-        const remarkDiv = document.querySelector('[id^="ctl00_LoansRepeater_Div_ApprovalIssues_"]');
-        if (!remarkDiv) {
-            requestAnimationFrame(waitForRemarkBlock);
-            return;
-        }
-
-        const hiddenPhrases = [
-            'Loan remark "Personal Info Verification"',
-            'Loan remark "Bank account # and ABA verified"',
-            'Loan remark "T&C Read and Agreed"',
-            'Loan remark "Minimum Amount The Customer Agrees To"',
-            'Loan remark "All Accounts checked on DL"',
-            'Loan remark "Loan Type Matches Cust Loyalty Status"',
-            'Loan remark "Loan Amount Fixed"',
-            'Loan remark "Promotion Code"'
-        ];
-
-        const listItems = remarkDiv.querySelectorAll("ul li");
-        listItems.forEach(li => {
-            const text = li.textContent.trim();
-            const shouldHide = hiddenPhrases.some(phrase => text.includes(phrase));
-            if (shouldHide) {
-                li.style.display = "none";
+    /*** ============ Remark Filter ============ ***/
+    if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
+        const waitForRemarkBlock = () => {
+            const remarkDiv = document.querySelector('[id^="ctl00_LoansRepeater_Div_ApprovalIssues_"]');
+            if (!remarkDiv) {
+                requestAnimationFrame(waitForRemarkBlock);
+                return;
             }
-        });
-    };
 
-    const observer = new MutationObserver(waitForRemarkBlock);
-    observer.observe(document.body, { childList: true, subtree: true });
-}
+            const hiddenPhrases = [
+                'Loan remark "Personal Info Verification"',
+                'Loan remark "Bank account # and ABA verified"',
+                'Loan remark "T&C Read and Agreed"',
+                'Loan remark "Minimum Amount The Customer Agrees To"',
+                'Loan remark "All Accounts checked on DL"',
+                'Loan remark "Loan Type Matches Cust Loyalty Status"',
+                'Loan remark "Loan Amount Fixed"',
+                'Loan remark "Promotion Code"'
+            ];
 
-/*** ============ IBV Shortener ============ ***/
-if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
-    const params = new URL(document.location.href).searchParams;
-    const action = params.get("action");
-    const mode = params.get("mode");
-    const letterId = params.get("letterid");
-    const allowedIds = ["120", "139", "620"];
-    const GRAPHQL_ENDPOINT = 'https://api.creditsense.ai/';
-    const SHORTENER_DOMAIN = 'tap.cy';
-    const API_KEY_STORAGE_KEY = 'shorturl_api_key';
-
-    // === Use hardcoded API key ===
-    const apiKey = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
-
-    if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
-        const parseLMSDateFromCDT = (dateStr) => {
-            const [datePart, timePart, ampm] = dateStr.trim().split(/\s+/);
-            const [month, day, year] = datePart.split("/").map(Number);
-            let [hour, minute, second] = timePart.split(":" ).map(Number);
-            if (ampm === "PM" && hour !== 12) hour += 12;
-            if (ampm === "AM" && hour === 12) hour = 0;
-            return new Date(Date.UTC(year, month - 1, day, hour + 5, minute, second));
+            const listItems = remarkDiv.querySelectorAll("ul li");
+            listItems.forEach(li => {
+                const text = li.textContent.trim();
+                const shouldHide = hiddenPhrases.some(phrase => text.includes(phrase));
+                if (shouldHide) {
+                    li.style.display = "none";
+                }
+            });
         };
 
-        const shortenUI = document.createElement("div");
-        shortenUI.style.cssText = `
+        const observer = new MutationObserver(waitForRemarkBlock);
+        observer.observe(document.body, { childList: true, subtree: true });
+    }
+
+    /*** ============ IBV Shortener ============ ***/
+    if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
+        const params = new URL(document.location.href).searchParams;
+        const action = params.get("action");
+        const mode = params.get("mode");
+        const letterId = params.get("letterid");
+        const allowedIds = ["120", "139", "620"];
+        const GRAPHQL_ENDPOINT = 'https://api.creditsense.ai/';
+        const SHORTENER_DOMAIN = 'tap.cy';
+        const API_KEY_STORAGE_KEY = 'shorturl_api_key';
+
+        // === Use hardcoded API key ===
+        const apiKey = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
+
+        if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
+            const parseLMSDateFromCDT = (dateStr) => {
+                const [datePart, timePart, ampm] = dateStr.trim().split(/\s+/);
+                const [month, day, year] = datePart.split("/").map(Number);
+                let [hour, minute, second] = timePart.split(":").map(Number);
+                if (ampm === "PM" && hour !== 12) hour += 12;
+                if (ampm === "AM" && hour === 12) hour = 0;
+                return new Date(Date.UTC(year, month - 1, day, hour + 5, minute, second));
+            };
+
+            const shortenUI = document.createElement("div");
+            shortenUI.style.cssText = `
             background:#fff; padding:12px; border:2px solid green; border-radius:10px;
             box-shadow:0 0 10px rgba(0,0,0,0.2); margin-bottom:15px; margin-top:15px;
             font-family:Arial,sans-serif; min-width:400px;`;
 
-        shortenUI.innerHTML = `
+            shortenUI.innerHTML = `
             <b>Shorten IBV Link</b><br>
             <textarea id="linkInput" style="width:100%; height:80px; margin-top:5px; font-family:monospace;"></textarea><br>
             <div style="margin-top:5px; display:flex; gap:10px; flex-wrap:wrap;">
@@ -911,380 +979,379 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
             <div id="shortenResult" style="margin-top:10px; font-family:monospace"></div>
         `;
 
-        const insertAfter = (newNode, referenceNode) => {
-            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
-        };
+            const insertAfter = (newNode, referenceNode) => {
+                referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+            };
 
-        const waitForButtonAndInject = () => {
-            const sendBtn = document.getElementById("maincontent_TextMessageButton");
-            if (!sendBtn) return setTimeout(waitForButtonAndInject, 300);
-            insertAfter(shortenUI, sendBtn);
+            const waitForButtonAndInject = () => {
+                const sendBtn = document.getElementById("maincontent_TextMessageButton");
+                if (!sendBtn) return setTimeout(waitForButtonAndInject, 300);
+                insertAfter(shortenUI, sendBtn);
 
-            const renderShortLinkUI = (shortUrl) => {
-                const result = document.getElementById("shortenResult");
-                result.innerHTML = `✅ <a href="${shortUrl}" target="_blank">${shortUrl}</a> <button type="button" id="copyShort">Insert to txt</button>`;
+                const renderShortLinkUI = (shortUrl) => {
+                    const result = document.getElementById("shortenResult");
+                    result.innerHTML = `✅ <a href="${shortUrl}" target="_blank">${shortUrl}</a> <button type="button" id="copyShort">Insert to txt</button>`;
 
-                document.getElementById("copyShort").onclick = () => {
-                    if (typeof GM_setClipboard !== 'undefined') {
-                        GM_setClipboard(shortUrl);
-                    } else {
-                        navigator.clipboard.writeText(shortUrl);
-                    }
+                    document.getElementById("copyShort").onclick = () => {
+                        if (typeof GM_setClipboard !== 'undefined') {
+                            GM_setClipboard(shortUrl);
+                        } else {
+                            navigator.clipboard.writeText(shortUrl);
+                        }
 
-                    const textarea = document.getElementById("maincontent_TextAreaPlain");
-                    if (textarea) {
-                        const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=(\[token_aes_cbc\]|[a-zA-Z0-9]+)/;
-                        const match = textarea.value.match(pattern);
+                        const textarea = document.getElementById("maincontent_TextAreaPlain");
+                        if (textarea) {
+                            const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=(\[token_aes_cbc\]|[a-zA-Z0-9]+)/;
+                            const match = textarea.value.match(pattern);
+                            if (match) {
+                                const newText = textarea.value.replace(pattern, shortUrl);
+                                textarea.value = newText;
+                                textarea.style.color = 'green';
+                                setTimeout(() => { textarea.style.color = ''; }, 2200);
+                            }
+                        }
+                    };
+                };
+
+                const fetchFromNotes = async (type) => {
+                    const customerIdMatch = location.href.match(/customerid=(\d+)/);
+                    if (!customerIdMatch) return alert("❌ CustomerID not found in URL");
+
+                    const customerId = customerIdMatch[1];
+                    const res = await fetch(`/plm.net/customers/CustomerNotes.aspx?customerid=${customerId}&isnosection=true`);
+                    const html = await res.text();
+                    const doc = new DOMParser().parseFromString(html, "text/html");
+                    const rows = Array.from(doc.querySelectorAll("table.DataTable tbody tr"));
+
+                    const REGEX = type === "IBV"
+                        ? /https:\/\/creditcube\.com\/ibv\?t=[a-zA-Z0-9]+/
+                        : type === "eSig"
+                            ? /https:\/\/creditcube\.com\/esig\?t=[a-zA-Z0-9]+/
+                            : /https:\/\/ccwusa\.org\/[a-zA-Z0-9]{7,}/;
+
+                    let found = null;
+                    for (let i = rows.length - 1; i >= 0; i--) {
+                        const cells = rows[i].querySelectorAll("td");
+                        if (cells.length < 3) continue;
+                        const dateStr = cells[0].textContent.trim();
+                        const noteText = cells[2].textContent;
+                        const match = noteText.match(REGEX);
                         if (match) {
-                            const newText = textarea.value.replace(pattern, shortUrl);
-                            textarea.value = newText;
-                            textarea.style.color = 'green';
-                            setTimeout(() => { textarea.style.color = ''; }, 2200);
+                            found = { link: match[0], dateStr };
+                            break;
                         }
                     }
-                };
-            };
 
-            const fetchFromNotes = async (type) => {
-                const customerIdMatch = location.href.match(/customerid=(\d+)/);
-                if (!customerIdMatch) return alert("❌ CustomerID not found in URL");
+                    if (!found) return alert(`❌ No ${type} link found in notes`);
 
-                const customerId = customerIdMatch[1];
-                const res = await fetch(`/plm.net/customers/CustomerNotes.aspx?customerid=${customerId}&isnosection=true`);
-                const html = await res.text();
-                const doc = new DOMParser().parseFromString(html, "text/html");
-                const rows = Array.from(doc.querySelectorAll("table.DataTable tbody tr"));
+                    const parsed = parseLMSDateFromCDT(found.dateStr);
+                    const now = new Date();
+                    const diffMs = now.getTime() - parsed.getTime();
+                    const absDiff = Math.abs(diffMs);
+                    const days = Math.floor(absDiff / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((absDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const direction = diffMs >= 0 ? "ago" : "from now";
 
-                const REGEX = type === "IBV"
-                    ? /https:\/\/creditcube\.com\/ibv\?t=[a-zA-Z0-9]+/
-                    : type === "eSig"
-                    ? /https:\/\/creditcube\.com\/esig\?t=[a-zA-Z0-9]+/
-                    : /https:\/\/ccwusa\.org\/[a-zA-Z0-9]{7,}/;
+                    const formatted = new Intl.DateTimeFormat("en-US", {
+                        timeZone: "America/Chicago",
+                        timeZoneName: "short",
+                        month: "2-digit",
+                        day: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: true
+                    }).format(parsed);
 
-                let found = null;
-                for (let i = rows.length - 1; i >= 0; i--) {
-                    const cells = rows[i].querySelectorAll("td");
-                    if (cells.length < 3) continue;
-                    const dateStr = cells[0].textContent.trim();
-                    const noteText = cells[2].textContent;
-                    const match = noteText.match(REGEX);
-                    if (match) {
-                        found = { link: match[0], dateStr };
-                        break;
+                    const input = document.getElementById("linkInput");
+                    input.value = `Found ${type}: ${formatted} (${days} days and ${hours} hours ${direction})\n${found.link}`;
+                    input.style.border = "2px solid green";
+                    setTimeout(() => { input.style.border = ""; }, 2000);
+
+                    const shortenBtn = document.getElementById("shortenBtn");
+                    if (type === "Shorten") {
+                        shortenBtn.disabled = true;
+                        shortenBtn.textContent = "🔒 Already Shortened";
+                        renderShortLinkUI(found.link);
+                    } else {
+                        shortenBtn.disabled = false;
+                        shortenBtn.textContent = "Shorten";
                     }
-                }
+                };
 
-                if (!found) return alert(`❌ No ${type} link found in notes`);
+                document.getElementById("fetchIBV").onclick = () => fetchFromNotes("IBV");
+                document.getElementById("fetchESIG").onclick = () => fetchFromNotes("eSig");
+                document.getElementById("fetchSHORT").onclick = () => fetchFromNotes("Shorten");
 
-                const parsed = parseLMSDateFromCDT(found.dateStr);
-                const now = new Date();
-                const diffMs = now.getTime() - parsed.getTime();
-                const absDiff = Math.abs(diffMs);
-                const days = Math.floor(absDiff / (1000 * 60 * 60 * 24));
-                const hours = Math.floor((absDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const direction = diffMs >= 0 ? "ago" : "from now";
+                document.getElementById("shortenBtn").onclick = async function () {
+                    const input = document.getElementById("linkInput").value.trim();
+                    const result = document.getElementById("shortenResult");
 
-                const formatted = new Intl.DateTimeFormat("en-US", {
-                    timeZone: "America/Chicago",
-                    timeZoneName: "short",
-                    month: "2-digit",
-                    day: "2-digit",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                    hour12: true
-                }).format(parsed);
+                    const urlMatch = input.match(/https:\/\/creditcube\.com\/(ibv|esig)\?t=[a-zA-Z0-9]+/);
+                    if (!urlMatch) {
+                        result.innerHTML = `<span style='color:red'>❌ Error: No valid link found</span>`;
+                        return;
+                    }
 
-                const input = document.getElementById("linkInput");
-                input.value = `Found ${type}: ${formatted} (${days} days and ${hours} hours ${direction})\n${found.link}`;
-                input.style.border = "2px solid green";
-                setTimeout(() => { input.style.border = ""; }, 2000);
+                    const url = urlMatch[0];
+                    result.textContent = "⏳ Shortening...";
 
-                const shortenBtn = document.getElementById("shortenBtn");
-                if (type === "Shorten") {
-                    shortenBtn.disabled = true;
-                    shortenBtn.textContent = "🔒 Already Shortened";
-                    renderShortLinkUI(found.link);
-                } else {
-                    shortenBtn.disabled = false;
-                    shortenBtn.textContent = "Shorten";
-                }
-            };
-
-            document.getElementById("fetchIBV").onclick = () => fetchFromNotes("IBV");
-            document.getElementById("fetchESIG").onclick = () => fetchFromNotes("eSig");
-            document.getElementById("fetchSHORT").onclick = () => fetchFromNotes("Shorten");
-
-            document.getElementById("shortenBtn").onclick = async function () {
-                const input = document.getElementById("linkInput").value.trim();
-                const result = document.getElementById("shortenResult");
-
-                const urlMatch = input.match(/https:\/\/creditcube\.com\/(ibv|esig)\?t=[a-zA-Z0-9]+/);
-                if (!urlMatch) {
-                    result.innerHTML = `<span style='color:red'>❌ Error: No valid link found</span>`;
-                    return;
-                }
-
-                const url = urlMatch[0];
-                result.textContent = "⏳ Shortening...";
-
-                try {
-                    const r = await fetch(GRAPHQL_ENDPOINT, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-api-key': apiKey,
-                        },
-                        body: JSON.stringify({
-                            query: `
+                    try {
+                        const r = await fetch(GRAPHQL_ENDPOINT, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'x-api-key': apiKey,
+                            },
+                            body: JSON.stringify({
+                                query: `
                                 mutation ShortURL($url: String!, $domain: String!) {
                                     shortUrl(input: { url: $url, domain: $domain })
                                 }
                             `,
-                            variables: {
-                                url,
-                                domain: SHORTENER_DOMAIN
-                            }
-                        })
-                    });
+                                variables: {
+                                    url,
+                                    domain: SHORTENER_DOMAIN
+                                }
+                            })
+                        });
 
-                    const json = await r.json();
-                    const txt = json?.data?.shortUrl;
+                        const json = await r.json();
+                        const txt = json?.data?.shortUrl;
 
-                    if (!r.ok || !txt?.startsWith("http")) {
-                        throw new Error("❌ Invalid or empty response: " + JSON.stringify(json));
+                        if (!r.ok || !txt?.startsWith("http")) {
+                            throw new Error("❌ Invalid or empty response: " + JSON.stringify(json));
+                        }
+
+                        renderShortLinkUI(txt);
+                    } catch (e) {
+                        result.innerHTML = `❌ Error: ${e.message}`;
                     }
-
-                    renderShortLinkUI(txt);
-                } catch (e) {
-                    result.innerHTML = `❌ Error: ${e.message}`;
-                }
+                };
             };
+
+            waitForButtonAndInject();
+        }
+    }
+
+    /*** ============ LMS to DL Autofill + Register Copy ============ ***/
+    if (MODULES.lmsToDlAutofill) {
+
+      const showPopup = (text, type = "success") => {
+        const popup = document.createElement('div');
+        popup.textContent = text;
+        Object.assign(popup.style, {
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: type === 'error' ? '#f8d7da' : '#d4edda',
+          color: type === 'error' ? '#721c24' : '#155724',
+          padding: '10px 20px',
+          borderRadius: '8px',
+          fontWeight: 'bold',
+          zIndex: '9999',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+        });
+        document.body.appendChild(popup);
+        setTimeout(() => popup.remove(), 2500);
+      };
+
+      const createStyledButton = (label, onClick, id, dlStyle = false) => {
+        const btn = document.createElement("input");
+        btn.type = "button";
+        btn.value = label;
+        if (id) btn.id = id;
+        const style = dlStyle ? {
+          display: "inline-block",
+          margin: "0 4px 5px 0",
+          lineHeight: "1.42857143",
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          verticalAlign: "middle",
+          touchAction: "manipulation",
+          userSelect: "none",
+          backgroundImage: "none",
+          border: "1px solid transparent",
+          borderRadius: "4px",
+          WebkitAppearance: "button",
+          cursor: "pointer",
+          backgroundColor: "#166b9d",
+          color: "white",
+          padding: "3px 6px",
+          fontSize: "12px",
+          fontWeight: "normal"
+        } : {
+          padding: "4px",
+          fontFamily: "Arial, Helvetica, sans-serif",
+          fontWeight: "bold",
+          fontSize: "12px",
+          border: "1px solid #2e9fd8",
+          background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
+          color: "#DFDFDF",
+          cursor: "pointer",
+          marginLeft: "8px"
+        };
+        Object.assign(btn.style, style);
+        btn.addEventListener('click', onClick);
+        return btn;
+      };
+
+      if (location.href.includes("CustomerDetails.aspx")) {
+        const waitForElement = (selector, callback) => {
+          const targetNode = document.body;
+          const config = { childList: true, subtree: true };
+          const observer = new MutationObserver(() => {
+            const el = document.querySelector(selector);
+            if (el) {
+              observer.disconnect();
+              callback(el);
+            }
+          });
+          observer.observe(targetNode, config);
         };
 
-        waitForButtonAndInject();
-    }
-}
+        const injectLMSButton = () => {
+          waitForElement("#ctl00_EditBankInformationLink", (referenceNode) => {
+            if (document.getElementById("copyForDLBtn")) return;
 
-/*** ============ LMS to DL Autofill + Register Copy ============ ***/
-if (MODULES.lmsToDlAutofill) {
+            const wrapper = document.createElement("span");
+            wrapper.style.display = "inline-flex";
+            wrapper.style.alignItems = "center";
+            wrapper.style.gap = "4px";
 
-  const showPopup = (text, type = "success") => {
-    const popup = document.createElement('div');
-    popup.textContent = text;
-    Object.assign(popup.style, {
-      position: 'fixed',
-      top: '20px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      backgroundColor: type === 'error' ? '#f8d7da' : '#d4edda',
-      color: type === 'error' ? '#721c24' : '#155724',
-      padding: '10px 20px',
-      borderRadius: '8px',
-      fontWeight: 'bold',
-      zIndex: '9999',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
-    });
-    document.body.appendChild(popup);
-    setTimeout(() => popup.remove(), 2500);
-  };
+            referenceNode.parentNode.insertBefore(wrapper, referenceNode);
+            wrapper.appendChild(referenceNode);
 
-  const createStyledButton = (label, onClick, id, dlStyle = false) => {
-    const btn = document.createElement("input");
-    btn.type = "button";
-    btn.value = label;
-    if (id) btn.id = id;
-    const style = dlStyle ? {
-      display: "inline-block",
-      margin: "0 4px 5px 0",
-      lineHeight: "1.42857143",
-      textAlign: "center",
-      whiteSpace: "nowrap",
-      verticalAlign: "middle",
-      touchAction: "manipulation",
-      userSelect: "none",
-      backgroundImage: "none",
-      border: "1px solid transparent",
-      borderRadius: "4px",
-      WebkitAppearance: "button",
-      cursor: "pointer",
-      backgroundColor: "#166b9d",
-      color: "white",
-      padding: "3px 6px",
-      fontSize: "12px",
-      fontWeight: "normal"
-    } : {
-      padding: "4px",
-      fontFamily: "Arial, Helvetica, sans-serif",
-      fontWeight: "bold",
-      fontSize: "12px",
-      border: "1px solid #2e9fd8",
-      background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
-      color: "#DFDFDF",
-      cursor: "pointer",
-      marginLeft: "8px"
-    };
-    Object.assign(btn.style, style);
-    btn.addEventListener('click', onClick);
-    return btn;
-  };
+            const button = createStyledButton("Copy info", async () => {
+              const getText = (sel) => document.querySelector(sel)?.textContent.trim() || '';
+              const customerId = getText('#mainpropertiesview > table:nth-child(3) td:nth-child(4)');
+              const fullName = getText('#maincontent_Span_Name');
+              const [firstName, ...rest] = fullName.split(" ");
+              const lastName = rest.join(" ") || "";
+              const accountNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(6) > td:nth-child(2)');
+              const routingNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(5) > td:nth-child(2)');
+              const email = getText('#ctl00_Span_Email');
+              const phone = getText('#ctl00_Span_CellPhone > span');
+              const data = { customerId, firstName, lastName, accountNumber, routingNumber, email, phone };
 
-  if (location.href.includes("CustomerDetails.aspx")) {
-    const waitForElement = (selector, callback) => {
-      const targetNode = document.body;
-      const config = { childList: true, subtree: true };
-      const observer = new MutationObserver(() => {
-        const el = document.querySelector(selector);
-        if (el) {
-          observer.disconnect();
-          callback(el);
-        }
-      });
-      observer.observe(targetNode, config);
-    };
+              try {
+                await navigator.clipboard.writeText(JSON.stringify(data));
+                showPopup("✅ Info copied to clipboard");
+              } catch {
+                showPopup("❌ Clipboard copy failed", "error");
+              }
+            }, "copyForDLBtn");
 
-    const injectLMSButton = () => {
-      waitForElement("#ctl00_EditBankInformationLink", (referenceNode) => {
-        if (document.getElementById("copyForDLBtn")) return;
+            wrapper.appendChild(button);
+          });
+        };
 
-        const wrapper = document.createElement("span");
-        wrapper.style.display = "inline-flex";
-        wrapper.style.alignItems = "center";
-        wrapper.style.gap = "4px";
-
-        referenceNode.parentNode.insertBefore(wrapper, referenceNode);
-        wrapper.appendChild(referenceNode);
-
-        const button = createStyledButton("Copy info", async () => {
+        const injectRegisterButtons = () => {
           const getText = (sel) => document.querySelector(sel)?.textContent.trim() || '';
-          const customerId = getText('#mainpropertiesview > table:nth-child(3) td:nth-child(4)');
-          const fullName = getText('#maincontent_Span_Name');
-          const [firstName, ...rest] = fullName.split(" ");
-          const lastName = rest.join(" ") || "";
-          const accountNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(6) > td:nth-child(2)');
-          const routingNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(5) > td:nth-child(2)');
-          const email = getText('#ctl00_Span_Email');
-          const phone = getText('#ctl00_Span_CellPhone > span');
-          const data = { customerId, firstName, lastName, accountNumber, routingNumber, email, phone };
-
-          try {
-            await navigator.clipboard.writeText(JSON.stringify(data));
-            showPopup("✅ Info copied to clipboard");
-          } catch {
-            showPopup("❌ Clipboard copy failed", "error");
-          }
-        }, "copyForDLBtn");
-
-        wrapper.appendChild(button);
-      });
-    };
-
-    const injectRegisterButtons = () => {
-      const getText = (sel) => document.querySelector(sel)?.textContent.trim() || '';
-      const extractMainRow = () => {
-        const name = getText('#maincontent_Span_Name').toUpperCase();
-        const customerId = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
-        const ssnRaw = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(2) > b');
-        const dob = getText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(9) > td:nth-child(4)');
-        const email = getText('#ctl00_Span_Email');
-        const last4 = ssnRaw.slice(-4);
-        const ssnMasked = `xxx-xx-${last4}`;
-        return [name, customerId, '', ssnMasked, dob, email].join('\t');
-      };
-      const extractIdStateLoanRow = () => {
-        const name = getText('#maincontent_Span_Name').toUpperCase();
-        const customerId = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
-        const stateRaw = getText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(2) > td:nth-child(4)');
-        const state = stateRaw.match(/[A-Z]{2}/)?.[0] || '';
-        const loanHeader = Array.from(document.querySelectorAll('div.Header')).find(div => div.textContent.includes("Loan#"));
-        const loanId = loanHeader?.textContent.match(/Loan#\s*(\d+)/)?.[1] || '';
-        return [customerId, state, loanId, name].join('\t');
-      };
-
-      const nameSpan = document.querySelector("#maincontent_Span_Name");
-      if (!nameSpan || document.getElementById("copyMainRowBtn")) return;
-
-      const mainBtn = createStyledButton("3rd Party Register Info", () => {
-        navigator.clipboard.writeText(extractMainRow()).then(() => showPopup("✅ Copied!"));
-      }, "copyMainRowBtn");
-
-      const idBtn = createStyledButton("Check Registration Info", () => {
-        navigator.clipboard.writeText(extractIdStateLoanRow()).then(() => showPopup("✅ Copied!"));
-      }, "copyIDStateBtn");
-
-      const wrapper = document.createElement("span");
-      wrapper.style.display = "inline-flex";
-      wrapper.style.alignItems = "center";
-      wrapper.style.gap = "6px";
-      wrapper.style.marginLeft = "8px";
-
-      wrapper.appendChild(mainBtn);
-      wrapper.appendChild(idBtn);
-      nameSpan.after(wrapper);
-    };
-
-    setTimeout(() => {
-      injectLMSButton();
-      injectRegisterButtons();
-    }, 500);
-  }
-
-  if (location.href.includes("CreateRequest.aspx")) {
-    const insertButtons = () => {
-      const pasteTarget = document.querySelector(
-        "#ctl00_ctl00_MainContent_MainContent_pnlSections23 > table:nth-child(1) > tbody > tr:nth-child(4) > td:nth-child(3)"
-      );
-      const clearTarget = document.querySelector(
-        "#ctl00_ctl00_MainContent_MainContent_pnlSections23 > table:nth-child(1) > tbody > tr:nth-child(5) > td:nth-child(3)"
-      );
-      if (!pasteTarget || !clearTarget) return;
-
-      if (!document.getElementById("pasteFromLMSBtn")) {
-        const pasteBtn = createStyledButton("Paste from LMS", async () => {
-          try {
-            const text = await navigator.clipboard.readText();
-            const data = JSON.parse(text);
-            const setValue = (sel, val) => {
-              const el = document.querySelector(sel);
-              if (el) el.value = val;
-            };
-            setValue('#tbCustomerId', data.customerId);
-            setValue('#tbFirstName', data.firstName);
-            setValue('#tbLastName', data.lastName);
-            setValue('#tbAccountNum', data.accountNumber);
-            setValue('#tbRoutingNum', data.routingNumber);
-            setValue('#ctl00_ctl00_MainContent_MainContent_tbEmailAddress', data.email);
-            setValue('#ctl00_ctl00_MainContent_MainContent_tbPhoneNumber', data.phone);
-            showPopup("✅ Info pasted from clipboard");
-          } catch {
-            showPopup("⚠️ Invalid or empty clipboard", "error");
-          }
-        }, "pasteFromLMSBtn", true);
-        pasteTarget.appendChild(pasteBtn);
-      }
-
-      if (!document.getElementById("clearLMSFieldsBtn")) {
-        const clearBtn = createStyledButton("Clear All Fields", () => {
-          const clearValue = (sel) => {
-            const el = document.querySelector(sel);
-            if (el) el.value = '';
+          const extractMainRow = () => {
+            const name = getText('#maincontent_Span_Name').toUpperCase();
+            const customerId = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
+            const ssnRaw = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(2) > b');
+            const dob = getText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(9) > td:nth-child(4)');
+            const email = getText('#ctl00_Span_Email');
+            const last4 = ssnRaw.slice(-4);
+            const ssnMasked = `xxx-xx-${last4}`;
+            return [name, customerId, '', ssnMasked, dob, email].join('\t');
           };
-          ['#tbCustomerId', '#tbFirstName', '#tbLastName', '#tbAccountNum',
-            '#tbRoutingNum', '#ctl00_ctl00_MainContent_MainContent_tbEmailAddress',
-            '#ctl00_ctl00_MainContent_MainContent_tbPhoneNumber'].forEach(clearValue);
-          showPopup("Fields cleared");
-        }, "clearLMSFieldsBtn", true);
-        clearTarget.appendChild(clearBtn);
+          const extractIdStateLoanRow = () => {
+            const name = getText('#maincontent_Span_Name').toUpperCase();
+            const customerId = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
+            const stateRaw = getText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(2) > td:nth-child(4)');
+            const state = stateRaw.match(/[A-Z]{2}/)?.[0] || '';
+            const loanHeader = Array.from(document.querySelectorAll('div.Header')).find(div => div.textContent.includes("Loan#"));
+            const loanId = loanHeader?.textContent.match(/Loan#\s*(\d+)/)?.[1] || '';
+            return [customerId, state, loanId, name].join('\t');
+          };
+
+          const nameSpan = document.querySelector("#maincontent_Span_Name");
+          if (!nameSpan || document.getElementById("copyMainRowBtn")) return;
+
+          const mainBtn = createStyledButton("3rd Party Register Info", () => {
+            navigator.clipboard.writeText(extractMainRow()).then(() => showPopup("✅ Copied!"));
+          }, "copyMainRowBtn");
+
+          const idBtn = createStyledButton("Check Registration Info", () => {
+            navigator.clipboard.writeText(extractIdStateLoanRow()).then(() => showPopup("✅ Copied!"));
+          }, "copyIDStateBtn");
+
+          const wrapper = document.createElement("span");
+          wrapper.style.display = "inline-flex";
+          wrapper.style.alignItems = "center";
+          wrapper.style.gap = "6px";
+          wrapper.style.marginLeft = "8px";
+
+          wrapper.appendChild(mainBtn);
+          wrapper.appendChild(idBtn);
+          nameSpan.after(wrapper);
+        };
+
+        setTimeout(() => {
+          injectLMSButton();
+          injectRegisterButtons();
+        }, 500);
       }
-    };
 
-    const observer = new MutationObserver(insertButtons);
-    observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(insertButtons, 500);
-  }
-}
+      if (location.href.includes("CreateRequest.aspx")) {
+        const insertButtons = () => {
+          const pasteTarget = document.querySelector(
+            "#ctl00_ctl00_MainContent_MainContent_pnlSections23 > table:nth-child(1) > tbody > tr:nth-child(4) > td:nth-child(3)"
+          );
+          const clearTarget = document.querySelector(
+            "#ctl00_ctl00_MainContent_MainContent_pnlSections23 > table:nth-child(1) > tbody > tr:nth-child(5) > td:nth-child(3)"
+          );
+          if (!pasteTarget || !clearTarget) return;
 
+          if (!document.getElementById("pasteFromLMSBtn")) {
+            const pasteBtn = createStyledButton("Paste from LMS", async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                const data = JSON.parse(text);
+                const setValue = (sel, val) => {
+                  const el = document.querySelector(sel);
+                  if (el) el.value = val;
+                };
+                setValue('#tbCustomerId', data.customerId);
+                setValue('#tbFirstName', data.firstName);
+                setValue('#tbLastName', data.lastName);
+                setValue('#tbAccountNum', data.accountNumber);
+                setValue('#tbRoutingNum', data.routingNumber);
+                setValue('#ctl00_ctl00_MainContent_MainContent_tbEmailAddress', data.email);
+                setValue('#ctl00_ctl00_MainContent_MainContent_tbPhoneNumber', data.phone);
+                showPopup("✅ Info pasted from clipboard");
+              } catch {
+                showPopup("⚠️ Invalid or empty clipboard", "error");
+              }
+            }, "pasteFromLMSBtn", true);
+            pasteTarget.appendChild(pasteBtn);
+          }
+
+          if (!document.getElementById("clearLMSFieldsBtn")) {
+            const clearBtn = createStyledButton("Clear All Fields", () => {
+              const clearValue = (sel) => {
+                const el = document.querySelector(sel);
+                if (el) el.value = '';
+              };
+              ['#tbCustomerId', '#tbFirstName', '#tbLastName', '#tbAccountNum',
+                '#tbRoutingNum', '#ctl00_ctl00_MainContent_MainContent_tbEmailAddress',
+                '#ctl00_ctl00_MainContent_MainContent_tbPhoneNumber'].forEach(clearValue);
+              showPopup("Fields cleared");
+            }, "clearLMSFieldsBtn", true);
+            clearTarget.appendChild(clearBtn);
+          }
+        };
+
+        const observer = new MutationObserver(insertButtons);
+        observer.observe(document.body, { childList: true, subtree: true });
+        setTimeout(insertButtons, 500);
+      }
+    }
 
     /*** ============ Overpaid Check module ============ ***/
     if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
