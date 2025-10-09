@@ -2,24 +2,29 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.41
+// @version      1.42
 // @description  LMS Assistant PRO with Back Office modules only
 // @match        https://apply.creditcube.com/*
 // @match        https://portal.decisionlogic.com/CreateRequest.aspx*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setClipboard
+// @connect      api.creditsense.ai
 // @run-at       document-idle
 // ==/UserScript==
+
 
 (function () {
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.3";
+    const CURRENT_VERSION = "1.42";
 
-  const changelog = [
-  "Deleted RTF alerts module",
+ const changelog = [
+  'Deleted RTF alerts module',
+  '!NEW MODULE! -  Max exposure button',
+  '!NEW MODULE! -  Loan status cleaner'
 ];
 
 
@@ -86,34 +91,40 @@
     }
 
 const MODULES = {
-    lmsAssistant: true, // Logic will apply but module is hidden
-    emailFilter: true,
-    qcSearch: true,
-    overpaidCheck: true,
-    ibvShortener: true,
-    remarkFilter: true,
-  lmsToDlAutofill: true
-
+  lmsAssistant: true, // Logic will apply but module is hidden
+  emailFilter: true,
+  qcSearch: true,
+  overpaidCheck: true,
+  ibvShortener: true,
+  remarkFilter: true,
+  lmsToDlAutofill: true,
+  maxExposure: true,
+  crmStatusCleaner: true
 };
 
 const MODULE_LABELS = {
-    emailFilter: 'Email Filter',
-    qcSearch: 'QC Search',
-    overpaidCheck: 'Overpaid Check',
-    ibvShortener: 'IBV Shortener',
-    lmsToDlAutofill: "Register Copy Buttons",
-    remarkFilter: 'Remark Filter'
+  emailFilter: 'Email Filter',
+  qcSearch: 'QC Search',
+  overpaidCheck: 'Overpaid Check',
+  ibvShortener: 'IBV Shortener',
+  lmsToDlAutofill: 'Register Copy Buttons',
+  remarkFilter: 'Remark Filter',
+  maxExposure: 'Max Exposure',
+  crmStatusCleaner: 'Loan Status Cleaner'
 };
 
 const MODULE_DESCRIPTIONS = {
-    lmsAssistant: "Highlights states, manages call hours",
-    emailFilter: "Filters the list of email templates",
-    qcSearch: "QC Search — quick phone-based lookup",
-    overpaidCheck: "Checks overpaid status and options for potential refinance",
-    ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
-    lmsToDlAutofill: "Adds buttons to copy customer info for 3rd party registration and verification",
-    remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones"
+  lmsAssistant: 'Highlights states, manages call hours',
+  emailFilter: 'Filters the list of email templates',
+  qcSearch: 'QC Search — quick phone-based lookup',
+  overpaidCheck: 'Checks overpaid status and options for potential refinance',
+  ibvShortener: 'Allows to shorten IBV/ESIG links and insert into TXT preview',
+  lmsToDlAutofill: 'Adds buttons to copy customer info for 3rd party registration and verification',
+  remarkFilter: 'Hides unnecessary loan remarks, keeps only critical ones',
+  maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
+  crmStatusCleaner: 'Reduces the list of loan statuses'
 };
+
 
 Object.keys(MODULES).forEach(key => {
         const saved = localStorage.getItem(`lms_module_${key}`);
@@ -1283,6 +1294,381 @@ if (MODULES.lmsToDlAutofill) {
     observer.observe(document.body, { childList: true, subtree: true });
     setTimeout(insertButtons, 500);
   }
+}
+
+/*** ============ Max Exposure (resilient) ============ ***/
+if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
+  const API_URL = 'https://api.creditsense.ai/';
+  const API_KEY = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
+  const DECIMALS = 2;
+  const THRESHOLD = 100;
+
+  const BTN_STYLE = `
+    border-spacing:0;
+    text-decoration:none;
+    padding:4px;
+    margin-left:6px;
+    margin-top:3px;
+    font-family:Arial, Helvetica, sans-serif;
+    font-weight:bold;
+    font-size:12px;
+    border:1px solid #2e9fd8;
+    background:#2e9fd8 url(Images/global-button-back.png) left top repeat-x !important;
+    color:#DFDFDF !important;
+    cursor:pointer;
+    display:inline-block;
+  `;
+  const BTN_HOVER = `
+    background:#3eb0ff url(Images/global-button-back.png) left top repeat-x !important;
+    color:#fff !important;
+  `;
+  const BADGE_BASE = `
+    display:inline-block; margin-left:8px; padding:2px 8px;
+    font-family:Arial, Helvetica, sans-serif; font-weight:800; font-size:12px;
+    border:1px solid; border-radius:12px; cursor:pointer;
+  `;
+  const BADGE_OK = { color:'#14833b', bg:'#e9fff0', border:'#bde0c8' };
+  const BADGE_ERR = { color:'#b00', bg:'#fdecea', border:'#f5c6cb' };
+  const BADGE_WARN= { color:'#b00020', bg:'#ffe9e9', border:'#ffc7c7' };
+
+  const QUERY = `
+    query MaxExposureQuery($customerId: ID!) {
+      creditExposure(customerId: $customerId) { allowedAmount }
+    }`;
+
+  const safeJson = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const getCustomerIdFromUrl = () => (location.href.match(/[?&]customerid=(\d+)/i) || [])[1] || '';
+
+  function gql(variables) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: API_URL,
+        headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+        data: JSON.stringify({ query: QUERY, variables, operationName: 'MaxExposureQuery' }),
+        onload: (res) => {
+          const text = res.responseText || '';
+          const json = safeJson(text);
+          const ok = res.status >= 200 && res.status < 300 && json && !json.errors;
+          if (ok) resolve(json.data); else reject(json?.errors?.[0] || { status: res.status, body: text });
+        },
+        onerror: (e) => reject(e)
+      });
+    });
+  }
+
+  function applyBadgeTheme(el, theme) {
+    el.style.color = theme.color;
+    el.style.background = theme.bg;
+    el.style.borderColor = theme.border;
+  }
+
+  // Пошук APRWIN у видимому loan-блоці
+  function findAprwinLink() {
+    const links = Array.from(document.querySelectorAll('[id^="loan_"] a'));
+    return links.find(a => a.textContent.trim().toUpperCase() === 'APRWIN') || null;
+  }
+
+  // Побудова/відновлення
+  function ensureButton() {
+    const apr = findAprwinLink();
+    if (!apr) return false;
+
+    // Якщо кнопка вже є поруч — просто повернути true
+    if (apr.nextElementSibling?.dataset?.mxBtn === '1') return true;
+
+    // Якщо поруч є старий бейдж — запам'ятаємо попередній текст
+    let prevBadgeText = '';
+    if (apr.nextElementSibling && apr.nextElementSibling.nextElementSibling?.dataset?.mxBadge === '1') {
+      prevBadgeText = apr.nextElementSibling.nextElementSibling.textContent || '';
+    }
+
+    // Створити кнопку
+    const btn = document.createElement('a');
+    btn.href = 'javascript:void(0)';
+    btn.textContent = 'Max Exposure';
+    btn.setAttribute('role', 'button');
+    btn.dataset.mxBtn = '1';
+    btn.style.cssText = BTN_STYLE;
+    btn.title = 'Fetch allowedAmount';
+    btn.addEventListener('mouseenter', () => { btn.style.cssText = BTN_STYLE + BTN_HOVER; });
+    btn.addEventListener('mouseleave', () => { btn.style.cssText = BTN_STYLE; });
+
+    // Створити бейдж
+    const badge = document.createElement('span');
+    badge.dataset.mxBadge = '1';
+    badge.title = 'Click to copy';
+    badge.style.cssText = BADGE_BASE;
+    badge.style.display = 'none';
+    applyBadgeTheme(badge, BADGE_OK);
+
+    // Вставити
+    apr.insertAdjacentElement('afterend', btn);
+    btn.insertAdjacentElement('afterend', badge);
+
+    // Відновити попередній текст, якщо був
+    if (prevBadgeText) {
+      badge.style.display = 'inline-block';
+      badge.textContent = prevBadgeText;
+      if (prevBadgeText.startsWith('$')) {
+        const val = parseFloat(prevBadgeText.replace(/[^0-9.]/g, '')) || 0;
+        if (val < THRESHOLD) applyBadgeTheme(badge, BADGE_WARN);
+        else applyBadgeTheme(badge, BADGE_OK);
+      }
+    } else {
+      badge.textContent = '—';
+    }
+
+    const customerId = getCustomerIdFromUrl();
+
+    btn.onclick = async () => {
+      if (!customerId) {
+        badge.style.display = 'inline-block';
+        badge.textContent = 'No ID';
+        applyBadgeTheme(badge, BADGE_ERR);
+        return;
+      }
+      badge.style.display = 'inline-block';
+      badge.textContent = '…';
+      badge.style.color = '#0070f3';
+      badge.style.background = '#eef4ff';
+      badge.style.borderColor = '#c6d8ff';
+
+      try {
+        const data = await gql({ customerId });
+        const allowed = data?.creditExposure?.allowedAmount;
+        if (allowed != null && !Number.isNaN(+allowed)) {
+          const val = +allowed;
+          const formatted = val.toFixed(2);
+          badge.textContent = `$${formatted}`;
+          if (val < THRESHOLD) applyBadgeTheme(badge, BADGE_WARN); else applyBadgeTheme(badge, BADGE_OK);
+        } else {
+          badge.textContent = '—';
+          applyBadgeTheme(badge, BADGE_ERR);
+        }
+      } catch {
+        badge.textContent = 'Error';
+        applyBadgeTheme(badge, BADGE_ERR);
+      }
+    };
+
+    badge.onclick = () => {
+      const txt = badge.textContent.startsWith('$') ? badge.textContent.slice(1) : badge.textContent;
+      if (!txt || txt === '—' || txt === 'Error' || txt === 'No ID' || txt === '…') return;
+      try {
+        if (typeof GM_setClipboard !== 'undefined') GM_setClipboard(txt);
+        else navigator.clipboard.writeText(txt);
+        const oldBg = badge.style.background;
+        badge.style.background = '#d1ffe0';
+        setTimeout(() => { badge.style.background = oldBg; }, 600);
+      } catch {}
+    };
+
+    return true;
+  }
+
+  // Первинний рендер і стеження за DOM
+  (function initMaxExposureResilient() {
+    ensureButton();
+
+    const obs = new MutationObserver(() => {
+      // Якщо кнопка зникла після внутрішнього оновлення DOM — відновити
+      ensureButton();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    // Вимкнути при закритті сторінки
+    window.addEventListener('beforeunload', () => obs.disconnect());
+  })();
+}
+
+
+/*** ============ CRM Status Cleaner (module) ============ ***/
+if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
+
+  // Конфіг whitelist
+  const RAW_ALLOWED = [
+    'Frozen','Void CRA Reporting','CRA Reporting Accommodation (AW)','Bankruptcy',
+    'In-House Collections','Centralized Collections','Never Answered','TBW',
+    'Pending Approval','Courtesy Bump Given','Reduced Payment Given','Customer Did Not Apply',
+    'Incorrect Phone','Suspected Fraud','TBC','FRAUD!','Do Not Contact','For Review',
+    'Do Not Loan','Escalation','Debt Consolidation Company','Revoke ACH','Revoke RCC',
+    'Military','FP-CLM','PBK(CRP)'
+  ];
+  const normalize = (s) => (s || '').toString().replace(/\u00A0/g, ' ').trim().toLowerCase();
+  const ALLOWED = new Set(RAW_ALLOWED.map(normalize));
+
+  // Ключі/ID
+  const LS_MODE = 'crmBackOfficeMode'; // 'on' | 'off'
+  const COMPACT_ID = 'crmStatusCompactList';
+  const TOGGLER_ID = 'crmBackOfficeToggle';
+
+  // Guard та Observer
+  let working = false;
+  let domObserver = null;
+
+  // Стилі (одноразово)
+  (function injectStyles() {
+    if (document.getElementById('crmStatusCleanerStyles')) return;
+    const st = document.createElement('style');
+    st.id = 'crmStatusCleanerStyles';
+    st.textContent = `
+      #${COMPACT_ID} {
+        margin-top: 8px; padding: 8px 10px; border: 1px solid #dfeaf5; border-radius: 6px;
+        background: #f7fbff; max-width: 620px;
+      }
+      #${COMPACT_ID} .stack { display: grid; grid-auto-rows: minmax(20px, auto); row-gap: 6px; }
+      #${COMPACT_ID} .itm { display: flex; align-items: center; gap: 8px; }
+      #${COMPACT_ID} .itm input { margin: 0; }
+      #${COMPACT_ID} .itm label { margin: 0; font: 12px/1.2 Arial, sans-serif; cursor: pointer; }
+      #${COMPACT_ID} .labelTitle { font: bold 12px Arial, sans-serif; color:#345; margin-bottom:6px; }
+      #${TOGGLER_ID} {
+        position: fixed; right: 14px; top: 14px; z-index: 2147483647;
+        font: 12px/1 Arial, sans-serif; padding: 4px 10px; cursor: pointer;
+        border: 1px solid #2e9fd8; color: #DFDFDF; font-weight: bold;
+        background: #2e9fd8 url(Images/global-button-back.png) repeat-x; border-radius: 18px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      }
+      #${TOGGLER_ID} .state { font-weight: 800; margin-left: 6px; }
+    `;
+    document.head.appendChild(st);
+  })();
+
+  function findStatusContainer() {
+    const tds = Array.from(document.querySelectorAll('td'));
+    for (const td of tds) {
+      const labels = td.querySelectorAll('label[for]');
+      const inputs = td.querySelectorAll('input[type="checkbox"]');
+      if (labels.length >= 5 && inputs.length >= 5) return td;
+    }
+    return null;
+  }
+
+  function collectPairs(scopeEl) {
+    const res = [];
+    const labels = Array.from(scopeEl.querySelectorAll('label[for]'));
+    for (const lbl of labels) {
+      const id = lbl.getAttribute('for');
+      const input = id ? document.getElementById(id) : null;
+      if (!input) continue;
+      const text = (lbl.textContent || '').replace(/\u00A0/g, ' ').trim();
+      res.push({ input, text, key: normalize(text), disabled: input.disabled, checked: input.checked });
+    }
+    return res;
+  }
+
+  function buildList(container, title, items) {
+    container.innerHTML = '';
+    const t = document.createElement('div');
+    t.className = 'labelTitle';
+    t.textContent = title;
+    const list = document.createElement('div');
+    list.className = 'stack';
+    container.appendChild(t);
+    container.appendChild(list);
+
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.className = 'itm';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = it.checked;
+      cb.disabled = it.disabled;
+      const lb = document.createElement('label');
+      lb.textContent = it.text;
+      lb.addEventListener('click', () => cb.click());
+      cb.addEventListener('change', () => {
+        it.input.click(); // тригеримо нативні обробники CRM
+        cb.checked = it.input.checked;
+      });
+      row.appendChild(cb);
+      row.appendChild(lb);
+      list.appendChild(row);
+    }
+  }
+
+  function ensureToggler(mode, onToggle) {
+    let btn = document.getElementById(TOGGLER_ID);
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = TOGGLER_ID;
+      document.body.appendChild(btn);
+    }
+    const render = () => { btn.innerHTML = `BackOffice mode: <span class="state">${mode === 'on' ? 'On' : 'Off'}</span>`; };
+    render();
+    btn.onclick = async () => {
+      if (working) return;
+      working = true;
+      try {
+        mode = mode === 'on' ? 'off' : 'on';
+        localStorage.setItem(LS_MODE, mode);
+        render();
+        await onToggle(mode);
+      } finally {
+        working = false;
+      }
+    };
+  }
+
+  async function enableBackOffice(scopeEl) {
+    if (!scopeEl) return;
+    if (document.getElementById(COMPACT_ID) && scopeEl.style.display === 'none') return;
+
+    scopeEl.style.display = 'none';
+
+    let compact = document.getElementById(COMPACT_ID);
+    if (!compact) {
+      compact = document.createElement('div'); compact.id = COMPACT_ID;
+      scopeEl.parentElement.insertAdjacentElement('afterend', compact);
+    }
+
+    const pairs = collectPairs(scopeEl);
+    const allowedItems = pairs.filter(p => ALLOWED.has(p.key));
+    buildList(compact, 'Selected statuses', allowedItems);
+  }
+
+  async function disableBackOffice(scopeEl) {
+    if (!scopeEl) return;
+    if (!document.getElementById(COMPACT_ID) && scopeEl.style.display !== 'none') return;
+
+    document.getElementById(COMPACT_ID)?.remove();
+    scopeEl.style.display = '';
+  }
+
+  function setupObserver(getMode) {
+    if (domObserver) return;
+    domObserver = new MutationObserver(() => {
+      if (working) return;
+      const scope = findStatusContainer();
+      if (!scope) return;
+      const mode = getMode();
+      if (mode === 'on') {
+        enableBackOffice(scope);
+      } else {
+        disableBackOffice(scope);
+      }
+    });
+    domObserver.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('beforeunload', () => domObserver && domObserver.disconnect());
+  }
+
+  (async function initCrmStatusCleaner() {
+    const scope = findStatusContainer();
+    if (!scope) return;
+
+    let mode = localStorage.getItem(LS_MODE) || 'on';
+    const getMode = () => (localStorage.getItem(LS_MODE) || 'on');
+
+    if (mode === 'on') await enableBackOffice(scope); else await disableBackOffice(scope);
+
+    ensureToggler(mode, async (m) => {
+      const s = findStatusContainer();
+      if (!s) return;
+      if (m === 'on') await enableBackOffice(s); else await disableBackOffice(s);
+    });
+
+    setupObserver(getMode);
+  })();
 }
 
 
