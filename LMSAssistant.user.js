@@ -2,22 +2,26 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.3
+// @version      2.4
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setClipboard
+// @connect      api.creditsense.ai
+// @run-at       document-idle
+
 // ==/UserScript==
 
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.3";
+    const CURRENT_VERSION = "2.4";
 
  const changelog = [
-  "🆕 Added Chirp support in IBV Button Injector",
-  "✅ CRP link now works for both Yodlee and Chirp, depending on available reports"
+  "🆕 NEW MODULE - Max exposure button",
+  "🆕 NEW MODULE - Loan Status Cleaner"
 ];
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -93,7 +97,9 @@ const MODULES = {
     notifications: true,
     overpaidCheck: true,
     ibvShortener: true,
-    remarkFilter: true
+    remarkFilter: true,
+    maxExposure: true,
+    crmStatusCleaner: true
 };
 
 const MODULE_LABELS = {
@@ -106,7 +112,9 @@ const MODULE_LABELS = {
     notifications: 'Notifications Sound BETA',
     overpaidCheck: 'Overpaid Check',
     ibvShortener: 'IBV Shortener',
-    remarkFilter: 'Remark Filter'
+    remarkFilter: 'Remark Filter',
+     maxExposure: 'Max Exposure',
+        crmStatusCleaner: 'Loan Status Cleaner'
 };
 
 
@@ -120,7 +128,9 @@ const MODULE_DESCRIPTIONS = {
   notifications: "Enables sound and notifications for the tab",
   overpaidCheck: "Checks overpaid status and options for potential refinance",
   ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
-  remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones"
+  remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones",
+  maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
+  crmStatusCleaner: 'Reduces the list of loan statuses'
 };
 
 
@@ -1068,92 +1078,607 @@ if (MODULES.remarkFilter && location.href.includes('CustomerDetails')) {
 
 /*** ============ IBV Shortener ============ ***/
 if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
-    const params = new URL(document.location.href).searchParams;
-    const action = params.get("action");
-    const mode = params.get("mode");
-    const letterId = params.get("letterid");
-    const allowedIds = ["120", "139", "620"];
+  const changelog = [
+    "🆕 To increase TXT delivery and reduce their blocking by providers, we added IBV Shortener module (only for TXT with Full Token)",
+    "✂️ Allows shortening of manual IBV/ESIG links directly in LMS",
+    "✅ Inserts short link into txt with one click"
+  ];
 
-    if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
-        const WORKER_ENDPOINT = 'https://ccwusa.org/create';
+  const params = new URL(document.location.href).searchParams;
+  const action = params.get("action");
+  const mode = params.get("mode");
+  const letterId = params.get("letterid");
+  const allowedIds = ["120", "139", "620"];
+  const GRAPHQL_ENDPOINT = 'https://api.creditsense.ai/';
+  const SHORTENER_DOMAIN = 'tap.cy';
+  const apiKey = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
 
-        const shortenUI = document.createElement("div");
-        shortenUI.style.background = "#fff";
-        shortenUI.style.padding = "12px";
-        shortenUI.style.border = "2px solid green";
-        shortenUI.style.borderRadius = "10px";
-        shortenUI.style.boxShadow = "0 0 10px rgba(0,0,0,0.2)";
-        shortenUI.style.marginBottom = "15px";
-        shortenUI.style.marginTop = "15px";
-        shortenUI.style.fontFamily = "Arial, sans-serif";
-        shortenUI.style.minWidth = "400px";
+  if (action === "textmessage" && mode === "preview" && allowedIds.includes(letterId)) {
+    const parseLMSDateFromCDT = (dateStr) => {
+      const [datePart, timePart, ampm] = dateStr.trim().split(/\s+/);
+      const [month, day, year] = datePart.split("/").map(Number);
+      let [hour, minute, second] = timePart.split(":").map(Number);
+      if (ampm === "PM" && hour !== 12) hour += 12;
+      if (ampm === "AM" && hour === 12) hour = 0;
+      return new Date(Date.UTC(year, month - 1, day, hour + 5, minute, second));
+    };
 
-        shortenUI.innerHTML = `
-            <b>💡 Shorten IBV Link</b><br>
-            <textarea id="linkInput" style="width:100%; height:80px; margin-top:5px"></textarea><br>
-            <button type="button" id="shortenBtn" style="margin-top:5px">Shorten</button>
-            <div id="shortenResult" style="margin-top:10px; font-family:monospace"></div>
-        `;
+    const shortenUI = document.createElement("div");
+    shortenUI.style.cssText = `
+      background:#fff; padding:12px; border:2px solid green; border-radius:10px;
+      box-shadow:0 0 10px rgba(0,0,0,0.2); margin-bottom:15px; margin-top:15px;
+      font-family:Arial,sans-serif; min-width:400px;`;
 
-        const insertAfter = (newNode, referenceNode) => {
-            referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+    shortenUI.innerHTML = `
+      <b>Shorten IBV Link</b><br>
+      <textarea id="linkInput" style="width:100%; height:80px; margin-top:5px; font-family:monospace;"></textarea><br>
+      <div style="margin-top:5px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" id="fetchIBV" style="flex:1;">Find latest IBV link</button>
+        <button type="button" id="fetchESIG" style="flex:1;">Find latest E-Sign link</button>
+        <button type="button" id="fetchSHORT" style="flex:1;">Find latest Shortened link</button>
+        <button type="button" id="shortenBtn" style="flex:1;">Shorten</button>
+      </div>
+      <div id="shortenResult" style="margin-top:10px; font-family:monospace"></div>
+    `;
+
+    const insertAfter = (newNode, referenceNode) => {
+      referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+    };
+
+    const waitForButtonAndInject = () => {
+      const sendBtn = document.getElementById("maincontent_TextMessageButton");
+      if (!sendBtn) return setTimeout(waitForButtonAndInject, 300);
+      insertAfter(shortenUI, sendBtn);
+
+      const renderShortLinkUI = (shortUrl) => {
+        const result = document.getElementById("shortenResult");
+        result.innerHTML = `✅ <a href="${shortUrl}" target="_blank">${shortUrl}</a> <button type="button" id="copyShort">Insert to txt</button>`;
+
+        document.getElementById("copyShort").onclick = () => {
+          if (typeof GM_setClipboard !== 'undefined') {
+            GM_setClipboard(shortUrl);
+          } else {
+            navigator.clipboard.writeText(shortUrl);
+          }
+
+          const textarea = document.getElementById("maincontent_TextAreaPlain");
+          if (textarea) {
+            const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=([a-zA-Z0-9]+|\[token_aes_cbc\])/;
+            const match = textarea.value.match(pattern);
+            if (match) {
+              textarea.value = textarea.value.replace(pattern, shortUrl);
+              textarea.style.color = 'green';
+              setTimeout(() => { textarea.style.color = ''; }, 2200);
+            }
+          }
         };
+      };
 
-        const waitForButtonAndInject = () => {
-            const sendBtn = document.getElementById("maincontent_TextMessageButton");
-            if (!sendBtn) return setTimeout(waitForButtonAndInject, 300); // Try again in 300ms
+      const fetchFromNotes = async (type) => {
+        const customerIdMatch = location.href.match(/customerid=(\d+)/);
+        if (!customerIdMatch) return alert("❌ CustomerID not found in URL");
 
-            insertAfter(shortenUI, sendBtn);
+        const customerId = customerIdMatch[1];
+        const res = await fetch(`/plm.net/customers/CustomerNotes.aspx?customerid=${customerId}&isnosection=true`);
+        const html = await res.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const rows = Array.from(doc.querySelectorAll("table.DataTable tbody tr"));
 
-            document.getElementById("shortenBtn").onclick = async function () {
-                const input = document.getElementById("linkInput").value.trim();
-                const result = document.getElementById("shortenResult");
+        const REGEX = type === "IBV"
+          ? /https:\/\/creditcube\.com\/ibv\?t=[a-zA-Z0-9]+/
+          : type === "eSig"
+            ? /https:\/\/creditcube\.com\/esig\?t=[a-zA-Z0-9]+/
+            : /https:\/\/tap\.cy\/[a-zA-Z0-9]{6,}/;
 
-                if (!input.startsWith("http")) {
-                    result.innerHTML = `<span style='color:red'>❌ Error: Invalid link</span>`;
-                    return;
-                }
+        let found = null;
+        for (let i = rows.length - 1; i >= 0; i--) {
+          const cells = rows[i].querySelectorAll("td");
+          if (cells.length < 3) continue;
+          const dateStr = cells[0].textContent.trim();
+          const noteText = cells[2].textContent;
+          const match = noteText.match(REGEX);
+          if (match) {
+            const parsed = parseLMSDateFromCDT(dateStr);
+            const now = new Date();
+            const ageDays = (now - parsed) / (1000 * 60 * 60 * 24);
+            if (ageDays <= 5) {
+              found = { link: match[0], dateStr };
+              break;
+            }
+          }
+        }
 
-                result.textContent = "⏳ Shortening...";
+        if (!found) {
+          alert("❌ There are no fresh links to shorten (last 5 days). Please send the Full Token link yourself first.");
+          return;
+        }
 
-                try {
-                    const r = await fetch(`${WORKER_ENDPOINT}?url=${encodeURIComponent(input)}`);
-                    const txt = await r.text();
-                    if (!r.ok || !txt.startsWith("http")) throw new Error(txt);
+        const parsed = parseLMSDateFromCDT(found.dateStr);
+        const now = new Date();
+        const diffMs = now - parsed;
+        const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
 
-                    result.innerHTML = `✅ <a href="${txt}" target="_blank">${txt}</a> <button type="button" id="copyShort">Insert to txt</button>`;
+        const formatted = new Intl.DateTimeFormat("en-US", {
+          timeZone: "America/Chicago",
+          timeZoneName: "short",
+          month: "2-digit",
+          day: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true
+        }).format(parsed);
 
-                    document.getElementById("copyShort").onclick = () => {
-                        if (typeof GM_setClipboard !== 'undefined') {
-                            GM_setClipboard(txt);
-                        } else {
-                            navigator.clipboard.writeText(txt);
-                        }
+        const input = document.getElementById("linkInput");
+        input.value = `Found ${type}: ${formatted} (${days} days and ${hours} hours ago)\n${found.link}`;
+        input.style.border = "2px solid green";
+        setTimeout(() => { input.style.border = ""; }, 2000);
 
-                        const textarea = document.getElementById("maincontent_TextAreaPlain");
-                        if (textarea) {
-                            const pattern = /https:\/\/creditcube\.com\/(ibv|esig)\?t=(\[token_aes_cbc\]|[a-zA-Z0-9]+)/;
-                            const match = textarea.value.match(pattern);
-                            if (match) {
-                                const newText = textarea.value.replace(pattern, txt);
-                                textarea.value = newText;
-                                textarea.style.color = 'green';
-                                setTimeout(() => {
-                                    textarea.style.color = '';
-                                }, 2200);
-                            }
-                        }
-                    };
+        const shortenBtn = document.getElementById("shortenBtn");
+        if (type === "Shorten") {
+          shortenBtn.disabled = true;
+          shortenBtn.textContent = "🔒 Already Shortened";
+          renderShortLinkUI(found.link);
+        } else {
+          shortenBtn.disabled = false;
+          shortenBtn.textContent = "Shorten";
+        }
+      };
 
-                } catch (e) {
-                    result.innerHTML = `❌ Error: ${e.message}`;
-                }
-            };
-        };
+      document.getElementById("fetchIBV").onclick = () => fetchFromNotes("IBV");
+      document.getElementById("fetchESIG").onclick = () => fetchFromNotes("eSig");
+      document.getElementById("fetchSHORT").onclick = () => fetchFromNotes("Shorten");
 
-        waitForButtonAndInject();
-    }
+      document.getElementById("shortenBtn").onclick = async function () {
+        const input = document.getElementById("linkInput").value.trim();
+        const result = document.getElementById("shortenResult");
+
+        const urlMatch = input.match(/https:\/\/creditcube\.com\/(ibv|esig)\?t=[a-zA-Z0-9]+/);
+        if (!urlMatch) {
+          result.innerHTML = `<span style='color:red'>❌ Error: No valid link found</span>`;
+          return;
+        }
+
+        const url = urlMatch[0];
+        result.textContent = "⏳ Shortening...";
+
+        try {
+          const r = await fetch(GRAPHQL_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': apiKey,
+            },
+            body: JSON.stringify({
+              query: `mutation ShortURL($url: String!, $domain: String!) {
+                shortUrl(input: { url: $url, domain: $domain }) }`,
+              variables: { url, domain: SHORTENER_DOMAIN }
+            })
+          });
+
+          const json = await r.json();
+          const txt = json?.data?.shortUrl;
+
+          if (!r.ok || !txt?.startsWith("http")) {
+            throw new Error("❌ Invalid or empty response: " + JSON.stringify(json));
+          }
+
+          renderShortLinkUI(txt);
+        } catch (e) {
+          result.innerHTML = `❌ Error: ${e.message}`;
+        }
+      };
+    };
+
+    waitForButtonAndInject();
+  }
 }
+
+
+/*** ============ Max Exposure (always rightmost among left actions) ============ ***/
+
+if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
+  const API_URL = 'https://api.creditsense.ai/';
+  const API_KEY = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
+  const DECIMALS = 2;
+  const THRESHOLD = 100;
+
+  const BTN_STYLE = `
+    border-spacing:0;
+    text-decoration:none;
+    padding:4px;
+    margin-left:6px;
+    margin-top:3px;
+    font-family:Arial, Helvetica, sans-serif;
+    font-weight:bold;
+    font-size:12px;
+    border:1px solid #2e9fd8;
+    background:#2e9fd8 url(Images/global-button-back.png) left top repeat-x !important;
+    color:#DFDFDF !important;
+    cursor:pointer;
+    display:inline-block;
+  `;
+  const BTN_HOVER = `
+    background:#3eb0ff url(Images/global-button-back.png) left top repeat-x !important;
+    color:#fff !important;
+  `;
+  const BADGE_BASE = `
+    display:inline-block; margin-left:8px; padding:2px 8px;
+    font-family:Arial, Helvetica, sans-serif; font-weight:800; font-size:12px;
+    border:1px solid; border-radius:12px; cursor:pointer;
+  `;
+  const BADGE_OK = { color:'#14833b', bg:'#e9fff0', border:'#bde0c8' };
+  const BADGE_ERR = { color:'#b00', bg:'#fdecea', border:'#f5c6cb' };
+  const BADGE_WARN= { color:'#b00020', bg:'#ffe9e9', border:'#ffc7c7' };
+
+  const QUERY = `
+    query MaxExposureQuery($customerId: ID!) {
+      creditExposure(customerId: $customerId) { allowedAmount }
+    }`;
+
+  const safeJson = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const getCustomerIdFromUrl = () => (location.href.match(/[?&]customerid=(\d+)/i) || [])[1] || '';
+
+  function gql(variables) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: API_URL,
+        headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+        data: JSON.stringify({ query: QUERY, variables, operationName: 'MaxExposureQuery' }),
+        onload: (res) => {
+          const text = res.responseText || '';
+          const json = safeJson(text);
+          const ok = res.status >= 200 && res.status < 300 && json && !json.errors;
+          if (ok) resolve(json.data); else reject(json?.errors?.[0] || { status: res.status, body: text });
+        },
+        onerror: (e) => reject(e)
+      });
+    });
+  }
+
+
+  function getButtonsRow() {
+
+    let a = document.querySelector('#ctl00_LoansRepeater_Btn_ChangePendingDetails_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_ReviewAndUpdateCustomerInfo_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_Preview_0, #ctl00_LoansRepeater_Btn_Send_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_ExpressLoan_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    const tdWithButtons = Array.from(document.querySelectorAll('td')).find(td =>
+      td.querySelector('input[type="button"]')
+    );
+    return tdWithButtons || null;
+  }
+
+
+  function getOrCreateControls(row) {
+    let btn = row.querySelector('a[data-mx-btn="1"]');
+    let badge = row.querySelector('span[data-mx-badge="1"]');
+
+    if (!btn) {
+      btn = document.createElement('a');
+      btn.href = 'javascript:void(0)';
+      btn.textContent = 'Max Exposure';
+      btn.setAttribute('role', 'button');
+      btn.dataset.mxBtn = '1';
+      btn.style.cssText = BTN_STYLE;
+      btn.title = 'Fetch allowedAmount';
+      btn.addEventListener('mouseenter', () => { btn.style.cssText = BTN_STYLE + BTN_HOVER; });
+      btn.addEventListener('mouseleave', () => { btn.style.cssText = BTN_STYLE; });
+      row.appendChild(btn);
+    }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.dataset.mxBadge = '1';
+      badge.title = 'Click to copy';
+      badge.style.cssText = BADGE_BASE;
+      badge.style.display = 'none';
+      applyBadgeTheme(badge, BADGE_OK);
+      row.appendChild(badge);
+    }
+    return { btn, badge };
+  }
+
+
+  function placeAtRowEnd(row, btn, badge) {
+    const rightBlocks = Array.from(row.querySelectorAll('span[style*="float: right"]'));
+    const insertBeforeNode = rightBlocks.length ? rightBlocks[0] : null;
+
+
+    if (insertBeforeNode) {
+      if (badge.nextSibling !== insertBeforeNode) row.insertBefore(badge, insertBeforeNode);
+      if (btn.nextSibling !== badge) row.insertBefore(btn, badge);
+    } else {
+      if (badge !== row.lastElementChild) row.appendChild(badge);
+      if (btn !== badge.previousElementSibling) row.insertBefore(btn, badge);
+    }
+  }
+
+  function applyBadgeTheme(el, theme) {
+    el.style.color = theme.color;
+    el.style.background = theme.bg;
+    el.style.borderColor = theme.border;
+  }
+
+  function ensureButton() {
+    const row = getButtonsRow();
+    if (!row) return false;
+
+    const { btn, badge } = getOrCreateControls(row);
+    placeAtRowEnd(row, btn, badge);
+
+    if (!badge.textContent || badge.textContent === '') badge.textContent = '—';
+
+    const customerId = getCustomerIdFromUrl();
+
+    btn.onclick = async () => {
+      if (!customerId) {
+        badge.style.display = 'inline-block';
+        badge.textContent = 'No ID';
+        applyBadgeTheme(badge, BADGE_ERR);
+        return;
+      }
+      badge.style.display = 'inline-block';
+      badge.textContent = '…';
+      badge.style.color = '#0070f3';
+      badge.style.background = '#eef4ff';
+      badge.style.borderColor = '#c6d8ff';
+
+      try {
+        const data = await gql({ customerId });
+        const allowed = data?.creditExposure?.allowedAmount;
+        if (allowed != null && !Number.isNaN(+allowed)) {
+          const val = +allowed;
+          badge.textContent = `$${val.toFixed(DECIMALS)}`;
+          applyBadgeTheme(badge, val < THRESHOLD ? BADGE_WARN : BADGE_OK);
+        } else {
+          badge.textContent = '—';
+          applyBadgeTheme(badge, BADGE_ERR);
+        }
+      } catch {
+        badge.textContent = 'Error';
+        applyBadgeTheme(badge, BADGE_ERR);
+      }
+    };
+
+    badge.onclick = () => {
+      const txt = badge.textContent.startsWith('$') ? badge.textContent.slice(1) : badge.textContent;
+      if (!txt || txt === '—' || txt === 'Error' || txt === 'No ID' || txt === '…') return;
+      try {
+        if (typeof GM_setClipboard !== 'undefined') GM_setClipboard(txt);
+        else navigator.clipboard.writeText(txt);
+        const oldBg = badge.style.background;
+        badge.style.background = '#d1ffe0';
+        setTimeout(() => { badge.style.background = oldBg; }, 600);
+      } catch {}
+    };
+
+    return true;
+  }
+
+  (function initMaxExposureAdaptive() {
+    ensureButton();
+    const obs = new MutationObserver(() => { ensureButton(); });
+    obs.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('beforeunload', () => obs.disconnect());
+  })();
+}
+
+
+/*** ============ CRM Status Cleaner (module) — UW ============ ***/
+if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
+
+  // Конфіг whitelist для UW
+  const RAW_ALLOWED = [
+    'Never Answered',
+    'TBW',
+    'Pending Approval',
+    'GFA',
+    'UW',
+    'Validated',
+    'Cool Off Manual',
+    'Suspected Fraud',
+    'FRAUD!',
+    'For Review',
+    'Do Not Loan',
+    'AIR: Bank information mismatch',
+    'AIR: Account holder mismatch',
+    'AIR: Need screenshot of last DDs',
+    'AIR: Clarify pay frequency'
+  ];
+  const normalize = (s) => (s || '').toString().replace(/\u00A0/g, ' ').trim().toLowerCase();
+  const ALLOWED = new Set(RAW_ALLOWED.map(normalize));
+
+  // Ключі/ID
+  const LS_MODE = 'crmBackOfficeMode'; // 'on' | 'off'
+  const COMPACT_ID = 'crmStatusCompactList';
+  const TOGGLER_ID = 'crmBackOfficeToggle';
+
+  // Guard та Observer
+  let working = false;
+  let domObserver = null;
+
+  // Стилі
+  (function injectStyles() {
+    if (document.getElementById('crmStatusCleanerStyles')) return;
+    const st = document.createElement('style');
+    st.id = 'crmStatusCleanerStyles';
+    st.textContent = `
+      #${COMPACT_ID} {
+        margin-top: 8px; padding: 8px 10px; border: 1px solid #dfeaf5; border-radius: 6px;
+        background: #f7fbff; max-width: 620px;
+      }
+      #${COMPACT_ID} .stack { display: grid; grid-auto-rows: minmax(20px, auto); row-gap: 6px; }
+      #${COMPACT_ID} .itm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      #${COMPACT_ID} .itm input { margin: 0; }
+      #${COMPACT_ID} .itm label { margin: 0; font: 12px/1.2 Arial, sans-serif; cursor: pointer; }
+      #${COMPACT_ID} .labelTitle { font: bold 12px Arial, sans-serif; color:#345; margin-bottom:6px; }
+      #${TOGGLER_ID} {
+        position: fixed; right: 14px; top: 14px; z-index: 2147483647;
+        font: 12px/1 Arial, sans-serif; padding: 4px 10px; cursor: pointer;
+        border: 1px solid #2e9fd8; color: #DFDFDF; font-weight: bold;
+        background: #2e9fd8 url(Images/global-button-back.png) repeat-x; border-radius: 18px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      }
+      #${TOGGLER_ID} .state { font-weight: 800; margin-left: 6px; }
+    `;
+    document.head.appendChild(st);
+  })();
+
+  function findStatusContainer() {
+    const tds = Array.from(document.querySelectorAll('td'));
+    for (const td of tds) {
+      const labels = td.querySelectorAll('label[for]');
+      const inputs = td.querySelectorAll('input[type="checkbox"]');
+      if (labels.length >= 5 && inputs.length >= 5) return td;
+    }
+    return null;
+  }
+
+  function collectPairs(scopeEl) {
+    const res = [];
+    const labels = Array.from(scopeEl.querySelectorAll('label[for]'));
+    for (const lbl of labels) {
+      const id = lbl.getAttribute('for');
+      const input = id ? document.getElementById(id) : null;
+      if (!input) continue;
+      const text = (lbl.textContent || '').replace(/\u00A0/g, ' ').trim();
+      res.push({ input, text, key: normalize(text), disabled: input.disabled, checked: input.checked, label: lbl });
+    }
+    return res;
+  }
+
+  // Побудова компактного списку
+  function buildList(container, title, items) {
+    container.innerHTML = '';
+    const t = document.createElement('div');
+    t.className = 'labelTitle';
+    t.textContent = title;
+    const list = document.createElement('div');
+    list.className = 'stack';
+    container.appendChild(t);
+    container.appendChild(list);
+
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.className = 'itm';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = it.checked;
+      cb.disabled = it.disabled;
+      const lb = document.createElement('label');
+      lb.textContent = it.text;
+      lb.addEventListener('click', () => cb.click());
+
+      cb.addEventListener('change', () => {
+        it.input.click(); // тригеримо нативні обробники CRM
+        cb.checked = it.input.checked;
+      });
+
+      row.appendChild(cb);
+      row.appendChild(lb);
+      list.appendChild(row);
+    }
+  }
+
+  function ensureToggler(mode, onToggle) {
+    let btn = document.getElementById(TOGGLER_ID);
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = TOGGLER_ID;
+      document.body.appendChild(btn);
+    }
+    const render = () => { btn.innerHTML = `UW mode: <span class="state">${mode === 'on' ? 'On' : 'Off'}</span>`; };
+    render();
+    btn.onclick = async () => {
+      if (working) return;
+      working = true;
+      try {
+        mode = mode === 'on' ? 'off' : 'on';
+        localStorage.setItem(LS_MODE, mode);
+        render();
+        await onToggle(mode);
+      } finally {
+        working = false;
+      }
+    };
+  }
+
+  async function enableBackOffice(scopeEl) {
+    if (!scopeEl) return;
+    if (document.getElementById(COMPACT_ID) && scopeEl.style.display === 'none') return;
+
+    scopeEl.style.display = 'none';
+
+    let compact = document.getElementById(COMPACT_ID);
+    if (!compact) {
+      compact = document.createElement('div'); compact.id = COMPACT_ID;
+      scopeEl.parentElement.insertAdjacentElement('afterend', compact);
+    }
+
+    const pairs = collectPairs(scopeEl);
+    const allowedItems = pairs.filter(p => ALLOWED.has(p.key));
+    buildList(compact, 'Selected statuses', allowedItems);
+  }
+
+  async function disableBackOffice(scopeEl) {
+    if (!scopeEl) return;
+    if (!document.getElementById(COMPACT_ID) && scopeEl.style.display !== 'none') return;
+
+    document.getElementById(COMPACT_ID)?.remove();
+    scopeEl.style.display = '';
+  }
+
+  function setupObserver(getMode) {
+    if (domObserver) return;
+    domObserver = new MutationObserver(() => {
+      if (working) return;
+      const scope = findStatusContainer();
+      if (!scope) return;
+      const mode = getMode();
+      if (mode === 'on') {
+        enableBackOffice(scope);
+      } else {
+        disableBackOffice(scope);
+      }
+    });
+    domObserver.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('beforeunload', () => domObserver && domObserver.disconnect());
+  }
+
+  (async function initCrmStatusCleaner() {
+    const scope = findStatusContainer();
+    if (!scope) return;
+
+    let mode = localStorage.getItem(LS_MODE) || 'on';
+    const getMode = () => (localStorage.getItem(LS_MODE) || 'on');
+
+    if (mode === 'on') await enableBackOffice(scope); else await disableBackOffice(scope);
+
+    ensureToggler(mode, async (m) => {
+      const s = findStatusContainer();
+      if (!s) return;
+      if (m === 'on') await enableBackOffice(s); else await disableBackOffice(s);
+    });
+
+    setupObserver(getMode);
+  })();
+}
+
 /*** ============ Overpaid check module ============ ***/
 
 if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
