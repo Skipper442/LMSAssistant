@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.42
+// @version      1.43
 // @description  LMS Assistant PRO with Back Office modules only
 // @match        https://apply.creditcube.com/*
 // @match        https://portal.decisionlogic.com/CreateRequest.aspx*
@@ -19,12 +19,13 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.42";
+    const CURRENT_VERSION = "1.43";
 
  const changelog = [
-  'Deleted RTF alerts module',
-  '!NEW MODULE! -  Max exposure button',
-  '!NEW MODULE! -  Loan status cleaner'
+  
+  'Changed position of Max exposure button',
+  'Max exposure button now works for Denied customers',
+  'Bug FIX - Now you can select stages and chapters for Bankruptcy status'
 ];
 
 
@@ -1296,7 +1297,8 @@ if (MODULES.lmsToDlAutofill) {
   }
 }
 
-/*** ============ Max Exposure (resilient) ============ ***/
+/*** ============ Max Exposure (always rightmost among left actions) ============ ***/
+
 if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
   const API_URL = 'https://api.creditsense.ai/';
   const API_KEY = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
@@ -1357,67 +1359,89 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
     });
   }
 
+
+  function getButtonsRow() {
+
+    let a = document.querySelector('#ctl00_LoansRepeater_Btn_ChangePendingDetails_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_ReviewAndUpdateCustomerInfo_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_Preview_0, #ctl00_LoansRepeater_Btn_Send_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_ExpressLoan_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    const tdWithButtons = Array.from(document.querySelectorAll('td')).find(td =>
+      td.querySelector('input[type="button"]')
+    );
+    return tdWithButtons || null;
+  }
+
+
+  function getOrCreateControls(row) {
+    let btn = row.querySelector('a[data-mx-btn="1"]');
+    let badge = row.querySelector('span[data-mx-badge="1"]');
+
+    if (!btn) {
+      btn = document.createElement('a');
+      btn.href = 'javascript:void(0)';
+      btn.textContent = 'Max Exposure';
+      btn.setAttribute('role', 'button');
+      btn.dataset.mxBtn = '1';
+      btn.style.cssText = BTN_STYLE;
+      btn.title = 'Fetch allowedAmount';
+      btn.addEventListener('mouseenter', () => { btn.style.cssText = BTN_STYLE + BTN_HOVER; });
+      btn.addEventListener('mouseleave', () => { btn.style.cssText = BTN_STYLE; });
+      row.appendChild(btn);
+    }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.dataset.mxBadge = '1';
+      badge.title = 'Click to copy';
+      badge.style.cssText = BADGE_BASE;
+      badge.style.display = 'none';
+      applyBadgeTheme(badge, BADGE_OK);
+      row.appendChild(badge);
+    }
+    return { btn, badge };
+  }
+
+
+  function placeAtRowEnd(row, btn, badge) {
+    const rightBlocks = Array.from(row.querySelectorAll('span[style*="float: right"]'));
+    const insertBeforeNode = rightBlocks.length ? rightBlocks[0] : null;
+
+
+    if (insertBeforeNode) {
+      if (badge.nextSibling !== insertBeforeNode) row.insertBefore(badge, insertBeforeNode);
+      if (btn.nextSibling !== badge) row.insertBefore(btn, badge);
+    } else {
+      if (badge !== row.lastElementChild) row.appendChild(badge);
+      if (btn !== badge.previousElementSibling) row.insertBefore(btn, badge);
+    }
+  }
+
   function applyBadgeTheme(el, theme) {
     el.style.color = theme.color;
     el.style.background = theme.bg;
     el.style.borderColor = theme.border;
   }
 
-  // Пошук APRWIN у видимому loan-блоці
-  function findAprwinLink() {
-    const links = Array.from(document.querySelectorAll('[id^="loan_"] a'));
-    return links.find(a => a.textContent.trim().toUpperCase() === 'APRWIN') || null;
-  }
-
-  // Побудова/відновлення
   function ensureButton() {
-    const apr = findAprwinLink();
-    if (!apr) return false;
+    const row = getButtonsRow();
+    if (!row) return false;
 
-    // Якщо кнопка вже є поруч — просто повернути true
-    if (apr.nextElementSibling?.dataset?.mxBtn === '1') return true;
+    const { btn, badge } = getOrCreateControls(row);
+    placeAtRowEnd(row, btn, badge);
 
-    // Якщо поруч є старий бейдж — запам'ятаємо попередній текст
-    let prevBadgeText = '';
-    if (apr.nextElementSibling && apr.nextElementSibling.nextElementSibling?.dataset?.mxBadge === '1') {
-      prevBadgeText = apr.nextElementSibling.nextElementSibling.textContent || '';
-    }
-
-    // Створити кнопку
-    const btn = document.createElement('a');
-    btn.href = 'javascript:void(0)';
-    btn.textContent = 'Max Exposure';
-    btn.setAttribute('role', 'button');
-    btn.dataset.mxBtn = '1';
-    btn.style.cssText = BTN_STYLE;
-    btn.title = 'Fetch allowedAmount';
-    btn.addEventListener('mouseenter', () => { btn.style.cssText = BTN_STYLE + BTN_HOVER; });
-    btn.addEventListener('mouseleave', () => { btn.style.cssText = BTN_STYLE; });
-
-    // Створити бейдж
-    const badge = document.createElement('span');
-    badge.dataset.mxBadge = '1';
-    badge.title = 'Click to copy';
-    badge.style.cssText = BADGE_BASE;
-    badge.style.display = 'none';
-    applyBadgeTheme(badge, BADGE_OK);
-
-    // Вставити
-    apr.insertAdjacentElement('afterend', btn);
-    btn.insertAdjacentElement('afterend', badge);
-
-    // Відновити попередній текст, якщо був
-    if (prevBadgeText) {
-      badge.style.display = 'inline-block';
-      badge.textContent = prevBadgeText;
-      if (prevBadgeText.startsWith('$')) {
-        const val = parseFloat(prevBadgeText.replace(/[^0-9.]/g, '')) || 0;
-        if (val < THRESHOLD) applyBadgeTheme(badge, BADGE_WARN);
-        else applyBadgeTheme(badge, BADGE_OK);
-      }
-    } else {
-      badge.textContent = '—';
-    }
+    if (!badge.textContent || badge.textContent === '') badge.textContent = '—';
 
     const customerId = getCustomerIdFromUrl();
 
@@ -1439,9 +1463,8 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
         const allowed = data?.creditExposure?.allowedAmount;
         if (allowed != null && !Number.isNaN(+allowed)) {
           const val = +allowed;
-          const formatted = val.toFixed(2);
-          badge.textContent = `$${formatted}`;
-          if (val < THRESHOLD) applyBadgeTheme(badge, BADGE_WARN); else applyBadgeTheme(badge, BADGE_OK);
+          badge.textContent = `$${val.toFixed(DECIMALS)}`;
+          applyBadgeTheme(badge, val < THRESHOLD ? BADGE_WARN : BADGE_OK);
         } else {
           badge.textContent = '—';
           applyBadgeTheme(badge, BADGE_ERR);
@@ -1467,20 +1490,14 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
     return true;
   }
 
-  // Первинний рендер і стеження за DOM
-  (function initMaxExposureResilient() {
+  (function initMaxExposureAdaptive() {
     ensureButton();
-
-    const obs = new MutationObserver(() => {
-      // Якщо кнопка зникла після внутрішнього оновлення DOM — відновити
-      ensureButton();
-    });
+    const obs = new MutationObserver(() => { ensureButton(); });
     obs.observe(document.body, { childList: true, subtree: true });
-
-    // Вимкнути при закритті сторінки
     window.addEventListener('beforeunload', () => obs.disconnect());
   })();
 }
+
 
 
 /*** ============ CRM Status Cleaner (module) ============ ***/
@@ -1507,7 +1524,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
   let working = false;
   let domObserver = null;
 
-  // Стилі (одноразово)
+
   (function injectStyles() {
     if (document.getElementById('crmStatusCleanerStyles')) return;
     const st = document.createElement('style');
@@ -1518,7 +1535,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
         background: #f7fbff; max-width: 620px;
       }
       #${COMPACT_ID} .stack { display: grid; grid-auto-rows: minmax(20px, auto); row-gap: 6px; }
-      #${COMPACT_ID} .itm { display: flex; align-items: center; gap: 8px; }
+      #${COMPACT_ID} .itm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       #${COMPACT_ID} .itm input { margin: 0; }
       #${COMPACT_ID} .itm label { margin: 0; font: 12px/1.2 Arial, sans-serif; cursor: pointer; }
       #${COMPACT_ID} .labelTitle { font: bold 12px Arial, sans-serif; color:#345; margin-bottom:6px; }
@@ -1530,6 +1547,9 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
         box-shadow: 0 2px 8px rgba(0,0,0,.15);
       }
       #${TOGGLER_ID} .state { font-weight: 800; margin-left: 6px; }
+      /* Вбудовані опції для Bankruptcy (ледачий рендер) */
+      #${COMPACT_ID} .inline-controls { display:none; align-items:center; gap:8px; margin-left:16px; }
+      #${COMPACT_ID} .inline-controls select { margin:0; }
     `;
     document.head.appendChild(st);
   })();
@@ -1552,12 +1572,58 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
       const input = id ? document.getElementById(id) : null;
       if (!input) continue;
       const text = (lbl.textContent || '').replace(/\u00A0/g, ' ').trim();
-      res.push({ input, text, key: normalize(text), disabled: input.disabled, checked: input.checked });
+      res.push({ input, text, key: normalize(text), disabled: input.disabled, checked: input.checked, label: lbl });
     }
     return res;
   }
 
-  function buildList(container, title, items) {
+
+  function findOrigBankruptcyInput(scopeEl) {
+    const lbl = Array.from(scopeEl.querySelectorAll('label[for]'))
+      .find(l => normalize(l.textContent) === 'bankruptcy');
+    return lbl ? document.getElementById(lbl.getAttribute('for')) : null;
+  }
+  function findOriginalStage()   { return document.getElementById('maincontent_BankruptcyStage'); }
+  function findOriginalChapter() { return document.getElementById('maincontent_BankruptcyChapter'); }
+
+
+  function cloneSelectWithSync(orig, id) {
+    if (!orig) return null;
+    let dup = document.getElementById(id);
+    if (!dup) dup = document.createElement('select');
+    dup.id = id;
+
+    const rebuild = () => {
+      dup.innerHTML = '';
+      for (const opt of orig.options) {
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.textContent;
+        dup.appendChild(o);
+      }
+      dup.value = orig.value;
+    };
+    rebuild();
+
+    dup.onchange = () => {
+      if (orig.value !== dup.value) {
+        orig.value = dup.value;
+        orig.dispatchEvent(new Event('change', { bubbles: true }));
+        orig.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    };
+    const sync = () => {
+      const a = Array.from(orig.options).map(o => o.value).join('|');
+      const b = Array.from(dup.options).map(o => o.value).join('|');
+      if (a !== b) rebuild(); else dup.value = orig.value;
+    };
+    orig.addEventListener('change', sync);
+    orig.addEventListener('input',  sync);
+
+    return dup;
+  }
+
+  function buildList(container, title, items, scopeEl) {
     container.innerHTML = '';
     const t = document.createElement('div');
     t.className = 'labelTitle';
@@ -1566,6 +1632,10 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
     list.className = 'stack';
     container.appendChild(t);
     container.appendChild(list);
+
+    const origBk = findOrigBankruptcyInput(scopeEl);
+    const stageOrig   = findOriginalStage();
+    const chapterOrig = findOriginalChapter();
 
     for (const it of items) {
       const row = document.createElement('div');
@@ -1577,13 +1647,54 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
       const lb = document.createElement('label');
       lb.textContent = it.text;
       lb.addEventListener('click', () => cb.click());
+
       cb.addEventListener('change', () => {
         it.input.click(); // тригеримо нативні обробники CRM
         cb.checked = it.input.checked;
+
+        if (it.key === 'bankruptcy') {
+          toggleInlineControls(row, cb.checked);
+        }
       });
+
       row.appendChild(cb);
       row.appendChild(lb);
+
+      if (it.key === 'bankruptcy') {
+        let inline = row.querySelector('.inline-controls');
+        if (!inline) {
+          inline = document.createElement('span');
+          inline.className = 'inline-controls';
+
+          if (stageOrig) {
+            const sLbl = document.createElement('span'); sLbl.textContent = 'Stage:';
+            const sDup = cloneSelectWithSync(stageOrig, 'crmDupRow_BankruptcyStage');
+            if (sDup) { sDup.style.margin = '0'; inline.appendChild(sLbl); inline.appendChild(sDup); }
+          }
+          if (chapterOrig) {
+            const cLbl = document.createElement('span'); cLbl.textContent = 'Chapter:';
+            const cDup = cloneSelectWithSync(chapterOrig, 'crmDupRow_BankruptcyChapter');
+            if (cDup) { cDup.style.margin = '0'; inline.appendChild(cLbl); inline.appendChild(cDup); }
+          }
+          row.appendChild(inline);
+        }
+
+
+        const initiallyOn = cb.checked || (origBk && origBk.checked);
+        toggleInlineControls(row, initiallyOn);
+
+
+        if (origBk) {
+          origBk.addEventListener('change', () => toggleInlineControls(row, origBk.checked));
+        }
+      }
+
       list.appendChild(row);
+    }
+
+    function toggleInlineControls(row, on) {
+      const wrap = row.querySelector('.inline-controls');
+      if (wrap) wrap.style.display = on ? 'inline-flex' : 'none';
     }
   }
 
@@ -1624,7 +1735,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
 
     const pairs = collectPairs(scopeEl);
     const allowedItems = pairs.filter(p => ALLOWED.has(p.key));
-    buildList(compact, 'Selected statuses', allowedItems);
+    buildList(compact, 'Selected statuses', allowedItems, scopeEl);
   }
 
   async function disableBackOffice(scopeEl) {
@@ -1670,6 +1781,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
     setupObserver(getMode);
   })();
 }
+
 
 
     /*** ============ Overpaid Check module ============ ***/
