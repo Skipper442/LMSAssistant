@@ -2,12 +2,14 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.15
+// @version      2.16
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setClipboard
+// @connect      api.creditsense.ai
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -15,11 +17,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.15";
+    const CURRENT_VERSION = "2.16";
 
  const changelog = [
-  "🆕 Added Chirp support in IBV Button Injector",
-  "✅ CRP link now works for both Yodlee and Chirp, depending on available reports"
+  "🆕 NEW MODULE - Max exposure button"
 ];
 
 
@@ -96,7 +97,8 @@
         qcSearch: true,
         overpaidCheck: true,
         ibvShortener: true,
-        remarkFilter: true
+        remarkFilter: true,
+        maxExposure: true
 
     };
 
@@ -108,7 +110,8 @@
         qcSearch: 'QC Search',
         overpaidCheck: 'Overpaid Check',
         ibvShortener: 'IBV Shortener',
-        remarkFilter: 'Remark Filter'
+        remarkFilter: 'Remark Filter',
+        maxExposure: 'Max Exposure'
 
     };
 
@@ -120,7 +123,8 @@
         qcSearch: "QC Search — quick phone-based lookup",
         overpaidCheck: "Checks overpaid status and options for potential refinance",
         ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
-        remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones"
+        remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones",
+        maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS '
 
     };
 
@@ -1217,6 +1221,209 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
     waitForButtonAndInject();
   }
 }
+
+/*** ============ Max Exposure (always rightmost among left actions) ============ ***/
+
+if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
+  const API_URL = 'https://api.creditsense.ai/';
+  const API_KEY = '845112af-3685-4cd1-b82b-e2adfc24eb1e';
+  const DECIMALS = 2;
+  const THRESHOLD = 100;
+
+  const BTN_STYLE = `
+    border-spacing:0;
+    text-decoration:none;
+    padding:4px;
+    margin-left:6px;
+    margin-top:3px;
+    font-family:Arial, Helvetica, sans-serif;
+    font-weight:bold;
+    font-size:12px;
+    border:1px solid #2e9fd8;
+    background:#2e9fd8 url(Images/global-button-back.png) left top repeat-x !important;
+    color:#DFDFDF !important;
+    cursor:pointer;
+    display:inline-block;
+  `;
+  const BTN_HOVER = `
+    background:#3eb0ff url(Images/global-button-back.png) left top repeat-x !important;
+    color:#fff !important;
+  `;
+  const BADGE_BASE = `
+    display:inline-block; margin-left:8px; padding:2px 8px;
+    font-family:Arial, Helvetica, sans-serif; font-weight:800; font-size:12px;
+    border:1px solid; border-radius:12px; cursor:pointer;
+  `;
+  const BADGE_OK = { color:'#14833b', bg:'#e9fff0', border:'#bde0c8' };
+  const BADGE_ERR = { color:'#b00', bg:'#fdecea', border:'#f5c6cb' };
+  const BADGE_WARN= { color:'#b00020', bg:'#ffe9e9', border:'#ffc7c7' };
+
+  const QUERY = `
+    query MaxExposureQuery($customerId: ID!) {
+      creditExposure(customerId: $customerId) { allowedAmount }
+    }`;
+
+  const safeJson = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
+  const getCustomerIdFromUrl = () => (location.href.match(/[?&]customerid=(\d+)/i) || [])[1] || '';
+
+  function gql(variables) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: API_URL,
+        headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+        data: JSON.stringify({ query: QUERY, variables, operationName: 'MaxExposureQuery' }),
+        onload: (res) => {
+          const text = res.responseText || '';
+          const json = safeJson(text);
+          const ok = res.status >= 200 && res.status < 300 && json && !json.errors;
+          if (ok) resolve(json.data); else reject(json?.errors?.[0] || { status: res.status, body: text });
+        },
+        onerror: (e) => reject(e)
+      });
+    });
+  }
+
+
+  function getButtonsRow() {
+
+    let a = document.querySelector('#ctl00_LoansRepeater_Btn_ChangePendingDetails_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_ReviewAndUpdateCustomerInfo_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_Preview_0, #ctl00_LoansRepeater_Btn_Send_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    a = document.querySelector('#ctl00_LoansRepeater_Btn_ExpressLoan_0');
+    if (a && a.parentElement) return a.parentElement;
+
+
+    const tdWithButtons = Array.from(document.querySelectorAll('td')).find(td =>
+      td.querySelector('input[type="button"]')
+    );
+    return tdWithButtons || null;
+  }
+
+
+  function getOrCreateControls(row) {
+    let btn = row.querySelector('a[data-mx-btn="1"]');
+    let badge = row.querySelector('span[data-mx-badge="1"]');
+
+    if (!btn) {
+      btn = document.createElement('a');
+      btn.href = 'javascript:void(0)';
+      btn.textContent = 'Max Exposure';
+      btn.setAttribute('role', 'button');
+      btn.dataset.mxBtn = '1';
+      btn.style.cssText = BTN_STYLE;
+      btn.title = 'Fetch allowedAmount';
+      btn.addEventListener('mouseenter', () => { btn.style.cssText = BTN_STYLE + BTN_HOVER; });
+      btn.addEventListener('mouseleave', () => { btn.style.cssText = BTN_STYLE; });
+      row.appendChild(btn);
+    }
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.dataset.mxBadge = '1';
+      badge.title = 'Click to copy';
+      badge.style.cssText = BADGE_BASE;
+      badge.style.display = 'none';
+      applyBadgeTheme(badge, BADGE_OK);
+      row.appendChild(badge);
+    }
+    return { btn, badge };
+  }
+
+
+  function placeAtRowEnd(row, btn, badge) {
+    const rightBlocks = Array.from(row.querySelectorAll('span[style*="float: right"]'));
+    const insertBeforeNode = rightBlocks.length ? rightBlocks[0] : null;
+
+
+    if (insertBeforeNode) {
+      if (badge.nextSibling !== insertBeforeNode) row.insertBefore(badge, insertBeforeNode);
+      if (btn.nextSibling !== badge) row.insertBefore(btn, badge);
+    } else {
+      if (badge !== row.lastElementChild) row.appendChild(badge);
+      if (btn !== badge.previousElementSibling) row.insertBefore(btn, badge);
+    }
+  }
+
+  function applyBadgeTheme(el, theme) {
+    el.style.color = theme.color;
+    el.style.background = theme.bg;
+    el.style.borderColor = theme.border;
+  }
+
+  function ensureButton() {
+    const row = getButtonsRow();
+    if (!row) return false;
+
+    const { btn, badge } = getOrCreateControls(row);
+    placeAtRowEnd(row, btn, badge);
+
+    if (!badge.textContent || badge.textContent === '') badge.textContent = '—';
+
+    const customerId = getCustomerIdFromUrl();
+
+    btn.onclick = async () => {
+      if (!customerId) {
+        badge.style.display = 'inline-block';
+        badge.textContent = 'No ID';
+        applyBadgeTheme(badge, BADGE_ERR);
+        return;
+      }
+      badge.style.display = 'inline-block';
+      badge.textContent = '…';
+      badge.style.color = '#0070f3';
+      badge.style.background = '#eef4ff';
+      badge.style.borderColor = '#c6d8ff';
+
+      try {
+        const data = await gql({ customerId });
+        const allowed = data?.creditExposure?.allowedAmount;
+        if (allowed != null && !Number.isNaN(+allowed)) {
+          const val = +allowed;
+          badge.textContent = `$${val.toFixed(DECIMALS)}`;
+          applyBadgeTheme(badge, val < THRESHOLD ? BADGE_WARN : BADGE_OK);
+        } else {
+          badge.textContent = '—';
+          applyBadgeTheme(badge, BADGE_ERR);
+        }
+      } catch {
+        badge.textContent = 'Error';
+        applyBadgeTheme(badge, BADGE_ERR);
+      }
+    };
+
+    badge.onclick = () => {
+      const txt = badge.textContent.startsWith('$') ? badge.textContent.slice(1) : badge.textContent;
+      if (!txt || txt === '—' || txt === 'Error' || txt === 'No ID' || txt === '…') return;
+      try {
+        if (typeof GM_setClipboard !== 'undefined') GM_setClipboard(txt);
+        else navigator.clipboard.writeText(txt);
+        const oldBg = badge.style.background;
+        badge.style.background = '#d1ffe0';
+        setTimeout(() => { badge.style.background = oldBg; }, 600);
+      } catch {}
+    };
+
+    return true;
+  }
+
+  (function initMaxExposureAdaptive() {
+    ensureButton();
+    const obs = new MutationObserver(() => { ensureButton(); });
+    obs.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('beforeunload', () => obs.disconnect());
+  })();
+}
+
+
 
     /*** ============ Overpaid Check module ============ ***/
     if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
