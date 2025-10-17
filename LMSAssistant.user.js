@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.16
+// @version      2.18
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @match        https://apply.creditcube.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
@@ -17,12 +17,12 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.16";
+    const CURRENT_VERSION = "2.18";
 
  const changelog = [
-  "🆕 NEW MODULE - Max exposure button"
+  "🆕 NEW MODULE - Max exposure button",
+  "🆕 NEW MODULE - Loan Status Cleaner"
 ];
-
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -98,7 +98,8 @@
         overpaidCheck: true,
         ibvShortener: true,
         remarkFilter: true,
-        maxExposure: true
+        maxExposure: true,
+        crmStatusCleaner: true
 
     };
 
@@ -111,7 +112,8 @@
         overpaidCheck: 'Overpaid Check',
         ibvShortener: 'IBV Shortener',
         remarkFilter: 'Remark Filter',
-        maxExposure: 'Max Exposure'
+        maxExposure: 'Max Exposure',
+        crmStatusCleaner: 'Loan Status Cleaner'
 
     };
 
@@ -124,7 +126,8 @@
         overpaidCheck: "Checks overpaid status and options for potential refinance",
         ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
         remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones",
-        maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS '
+        maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
+        crmStatusCleaner: 'Reduces the list of loan statuses'
 
     };
 
@@ -1423,6 +1426,212 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
   })();
 }
 
+/*** ============ CRM Status Cleaner (module) — Support ============ ***/
+if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
+
+  // Конфіг whitelist для Support
+  const RAW_ALLOWED = [
+    'Never Answered',
+    'TBW',
+    'Pending Approval',
+    'GFA',
+    'UW',
+    'Courtesy Bump Given',
+    'Reduced Payment Given',
+    'Customer Did Not Apply',
+    'Incorrect Phone',
+    'Suspected Fraud',
+    'Q-RESP',
+    'FRAUD!',
+    'Do Not Contact',
+    'For Review',
+    'Do Not Loan',
+    'AIR: Bank information mismatch',
+    'AIR: Account holder mismatch',
+    'AIR: Need screenshot of last DDs',
+    'AIR: Clarify pay frequency'
+  ];
+  const normalize = (s) => (s || '').toString().replace(/\u00A0/g, ' ').trim().toLowerCase();
+  const ALLOWED = new Set(RAW_ALLOWED.map(normalize));
+
+  // Ключі/ID
+  const LS_MODE = 'crmBackOfficeMode'; // 'on' | 'off'
+  const COMPACT_ID = 'crmStatusCompactList';
+  const TOGGLER_ID = 'crmBackOfficeToggle';
+
+  // Guard та Observer
+  let working = false;
+  let domObserver = null;
+
+  // Стилі (без змін)
+  (function injectStyles() {
+    if (document.getElementById('crmStatusCleanerStyles')) return;
+    const st = document.createElement('style');
+    st.id = 'crmStatusCleanerStyles';
+    st.textContent = `
+      #${COMPACT_ID} {
+        margin-top: 8px; padding: 8px 10px; border: 1px solid #dfeaf5; border-radius: 6px;
+        background: #f7fbff; max-width: 620px;
+      }
+      #${COMPACT_ID} .stack { display: grid; grid-auto-rows: minmax(20px, auto); row-gap: 6px; }
+      #${COMPACT_ID} .itm { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      #${COMPACT_ID} .itm input { margin: 0; }
+      #${COMPACT_ID} .itm label { margin: 0; font: 12px/1.2 Arial, sans-serif; cursor: pointer; }
+      #${COMPACT_ID} .labelTitle { font: bold 12px Arial, sans-serif; color:#345; margin-bottom:6px; }
+      #${TOGGLER_ID} {
+        position: fixed; right: 14px; top: 14px; z-index: 2147483647;
+        font: 12px/1 Arial, sans-serif; padding: 4px 10px; cursor: pointer;
+        border: 1px solid #2e9fd8; color: #DFDFDF; font-weight: bold;
+        background: #2e9fd8 url(Images/global-button-back.png) repeat-x; border-radius: 18px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      }
+      #${TOGGLER_ID} .state { font-weight: 800; margin-left: 6px; }
+      /* Контейнер для можливих inline-опцій залишено на майбутнє, але в Support не використовується */
+      #${COMPACT_ID} .inline-controls { display:none; align-items:center; gap:8px; margin-left:16px; }
+      #${COMPACT_ID} .inline-controls select { margin:0; }
+    `;
+    document.head.appendChild(st);
+  })();
+
+  function findStatusContainer() {
+    const tds = Array.from(document.querySelectorAll('td'));
+    for (const td of tds) {
+      const labels = td.querySelectorAll('label[for]');
+      const inputs = td.querySelectorAll('input[type="checkbox"]');
+      if (labels.length >= 5 && inputs.length >= 5) return td;
+    }
+    return null;
+  }
+
+  function collectPairs(scopeEl) {
+    const res = [];
+    const labels = Array.from(scopeEl.querySelectorAll('label[for]'));
+    for (const lbl of labels) {
+      const id = lbl.getAttribute('for');
+      const input = id ? document.getElementById(id) : null;
+      if (!input) continue;
+      const text = (lbl.textContent || '').replace(/\u00A0/g, ' ').trim();
+      res.push({ input, text, key: normalize(text), disabled: input.disabled, checked: input.checked, label: lbl });
+    }
+    return res;
+  }
+
+  // Побудова компактного списку (без inline-опцій)
+  function buildList(container, title, items, scopeEl) {
+    container.innerHTML = '';
+    const t = document.createElement('div');
+    t.className = 'labelTitle';
+    t.textContent = title;
+    const list = document.createElement('div');
+    list.className = 'stack';
+    container.appendChild(t);
+    container.appendChild(list);
+
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.className = 'itm';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = it.checked;
+      cb.disabled = it.disabled;
+      const lb = document.createElement('label');
+      lb.textContent = it.text;
+      lb.addEventListener('click', () => cb.click());
+
+      cb.addEventListener('change', () => {
+        it.input.click(); // тригеримо нативні обробники CRM
+        cb.checked = it.input.checked;
+      });
+
+      row.appendChild(cb);
+      row.appendChild(lb);
+      list.appendChild(row);
+    }
+  }
+
+  function ensureToggler(mode, onToggle) {
+    let btn = document.getElementById(TOGGLER_ID);
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = TOGGLER_ID;
+      document.body.appendChild(btn);
+    }
+    const render = () => { btn.innerHTML = `Sales mode: <span class="state">${mode === 'on' ? 'On' : 'Off'}</span>`; };
+    render();
+    btn.onclick = async () => {
+      if (working) return;
+      working = true;
+      try {
+        mode = mode === 'on' ? 'off' : 'on';
+        localStorage.setItem(LS_MODE, mode);
+        render();
+        await onToggle(mode);
+      } finally {
+        working = false;
+      }
+    };
+  }
+
+  async function enableBackOffice(scopeEl) {
+    if (!scopeEl) return;
+    if (document.getElementById(COMPACT_ID) && scopeEl.style.display === 'none') return;
+
+    scopeEl.style.display = 'none';
+
+    let compact = document.getElementById(COMPACT_ID);
+    if (!compact) {
+      compact = document.createElement('div'); compact.id = COMPACT_ID;
+      scopeEl.parentElement.insertAdjacentElement('afterend', compact);
+    }
+
+    const pairs = collectPairs(scopeEl);
+    const allowedItems = pairs.filter(p => ALLOWED.has(p.key));
+    buildList(compact, 'Selected statuses', allowedItems, scopeEl);
+  }
+
+  async function disableBackOffice(scopeEl) {
+    if (!scopeEl) return;
+    if (!document.getElementById(COMPACT_ID) && scopeEl.style.display !== 'none') return;
+
+    document.getElementById(COMPACT_ID)?.remove();
+    scopeEl.style.display = '';
+  }
+
+  function setupObserver(getMode) {
+    if (domObserver) return;
+    domObserver = new MutationObserver(() => {
+      if (working) return;
+      const scope = findStatusContainer();
+      if (!scope) return;
+      const mode = getMode();
+      if (mode === 'on') {
+        enableBackOffice(scope);
+      } else {
+        disableBackOffice(scope);
+      }
+    });
+    domObserver.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('beforeunload', () => domObserver && domObserver.disconnect());
+  }
+
+  (async function initCrmStatusCleaner() {
+    const scope = findStatusContainer();
+    if (!scope) return;
+
+    let mode = localStorage.getItem(LS_MODE) || 'on';
+    const getMode = () => (localStorage.getItem(LS_MODE) || 'on');
+
+    if (mode === 'on') await enableBackOffice(scope); else await disableBackOffice(scope);
+
+    ensureToggler(mode, async (m) => {
+      const s = findStatusContainer();
+      if (!s) return;
+      if (m === 'on') await enableBackOffice(s); else await disableBackOffice(s);
+    });
+
+    setupObserver(getMode);
+  })();
+}
 
 
     /*** ============ Overpaid Check module ============ ***/
