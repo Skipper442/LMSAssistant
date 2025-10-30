@@ -2,8 +2,9 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.43
+// @version      1.44
 // @description  LMS Assistant PRO with Back Office modules only
+// @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
 // @match        https://portal.decisionlogic.com/CreateRequest.aspx*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
@@ -19,13 +20,12 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.43";
+    const CURRENT_VERSION = "1.44";
 
  const changelog = [
   
-  'Changed position of Max exposure button',
-  'Max exposure button now works for Denied customers',
-  'Bug FIX - Now you can select stages and chapters for Bankruptcy status'
+  'NEW button for Trigger notifications register'
+ 
 ];
 
 
@@ -1079,27 +1079,42 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
     }
 }
 
-/*** ============ LMS to DL Autofill + Register Copy ============ ***/
-if (MODULES.lmsToDlAutofill) {
+/* ============ LMS to DL Autofill + Register Copy ============ */
+(function() {
+  'use strict';
 
+  if (!window.MODULES) window.MODULES = {};
+  if (typeof MODULES.lmsToDlAutofill === 'undefined') MODULES.lmsToDlAutofill = true;
+  if (!MODULES.lmsToDlAutofill) return;
+
+
+  const settings = {
+    triggerPII: {
+      skipSecondCell: true
+    }
+  };
+
+  // ---------- UI ----------
   const showPopup = (text, type = "success") => {
-    const popup = document.createElement('div');
-    popup.textContent = text;
-    Object.assign(popup.style, {
-      position: 'fixed',
-      top: '20px',
-      left: '50%',
-      transform: 'translateX(-50%)',
-      backgroundColor: type === 'error' ? '#f8d7da' : '#d4edda',
-      color: type === 'error' ? '#721c24' : '#155724',
-      padding: '10px 20px',
-      borderRadius: '8px',
-      fontWeight: 'bold',
-      zIndex: '9999',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
-    });
-    document.body.appendChild(popup);
-    setTimeout(() => popup.remove(), 2500);
+    try {
+      const el = document.createElement('div');
+      el.textContent = text;
+      Object.assign(el.style, {
+        position: 'fixed',
+        top: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: type === 'error' ? '#f8d7da' : '#d4edda',
+        color: type === 'error' ? '#721c24' : '#155724',
+        padding: '10px 20px',
+        borderRadius: '8px',
+        fontWeight: 'bold',
+        zIndex: '9999',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+      });
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 2500);
+    } catch(_) {}
   };
 
   const createStyledButton = (label, onClick, id, dlStyle = false) => {
@@ -1107,7 +1122,7 @@ if (MODULES.lmsToDlAutofill) {
     btn.type = "button";
     btn.value = label;
     if (id) btn.id = id;
-    const style = dlStyle ? {
+    Object.assign(btn.style, dlStyle ? {
       display: "inline-block",
       margin: "0 4px 5px 0",
       lineHeight: "1.42857143",
@@ -1136,25 +1151,34 @@ if (MODULES.lmsToDlAutofill) {
       color: "#DFDFDF",
       cursor: "pointer",
       marginLeft: "8px"
-    };
-    Object.assign(btn.style, style);
+    });
     btn.addEventListener('click', onClick);
     return btn;
   };
 
+  const waitForElement = (selector, cb) => {
+    const el = document.querySelector(selector);
+    if (el) { cb(el); return; }
+    const mo = new MutationObserver(() => {
+      const n = document.querySelector(selector);
+      if (n) { mo.disconnect(); cb(n); }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  };
+
+
+  const safeText = sel => document.querySelector(sel)?.textContent?.trim() || '';
+  const toUpper = s => (s || '').toUpperCase();
+  const onlyDigits = s => (s || '').match(/\d+/)?.[0] || '';
+  const stateAbbr = s => (s || '').toUpperCase().match(/[A-Z]{2}/)?.[0] || '';
+
+  const copyText = async (text) => {
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch { return false; }
+  };
+
+
   if (location.href.includes("CustomerDetails.aspx")) {
-    const waitForElement = (selector, callback) => {
-      const targetNode = document.body;
-      const config = { childList: true, subtree: true };
-      const observer = new MutationObserver(() => {
-        const el = document.querySelector(selector);
-        if (el) {
-          observer.disconnect();
-          callback(el);
-        }
-      });
-      observer.observe(targetNode, config);
-    };
 
     const injectLMSButton = () => {
       waitForElement("#ctl00_EditBankInformationLink", (referenceNode) => {
@@ -1169,17 +1193,15 @@ if (MODULES.lmsToDlAutofill) {
         wrapper.appendChild(referenceNode);
 
         const button = createStyledButton("Copy info", async () => {
-          const getText = (sel) => document.querySelector(sel)?.textContent.trim() || '';
-          const customerId = getText('#mainpropertiesview > table:nth-child(3) td:nth-child(4)');
-          const fullName = getText('#maincontent_Span_Name');
+          const customerId = safeText('#mainpropertiesview > table:nth-child(3) td:nth-child(4)');
+          const fullName = safeText('#maincontent_Span_Name');
           const [firstName, ...rest] = fullName.split(" ");
           const lastName = rest.join(" ") || "";
-          const accountNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(6) > td:nth-child(2)');
-          const routingNumber = getText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(5) > td:nth-child(2)');
-          const email = getText('#ctl00_Span_Email');
-          const phone = getText('#ctl00_Span_CellPhone > span');
+          const accountNumber = safeText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(6) > td:nth-child(2)');
+          const routingNumber = safeText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(5) > td:nth-child(2)');
+          const email = safeText('#ctl00_Span_Email');
+          const phone = safeText('#ctl00_Span_CellPhone > span');
           const data = { customerId, firstName, lastName, accountNumber, routingNumber, email, phone };
-
           try {
             await navigator.clipboard.writeText(JSON.stringify(data));
             showPopup("✅ Info copied to clipboard");
@@ -1192,25 +1214,26 @@ if (MODULES.lmsToDlAutofill) {
       });
     };
 
+
     const injectRegisterButtons = () => {
-      const getText = (sel) => document.querySelector(sel)?.textContent.trim() || '';
       const extractMainRow = () => {
-        const name = getText('#maincontent_Span_Name').toUpperCase();
-        const customerId = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
-        const ssnRaw = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(2) > b');
-        const dob = getText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(9) > td:nth-child(4)');
-        const email = getText('#ctl00_Span_Email');
+        const name = toUpper(safeText('#maincontent_Span_Name'));
+        const customerId = safeText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
+        const ssnRaw = safeText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(2) > b');
+        const dob = safeText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(9) > td:nth-child(4)');
+        const email = safeText('#ctl00_Span_Email');
         const last4 = ssnRaw.slice(-4);
         const ssnMasked = `xxx-xx-${last4}`;
         return [name, customerId, '', ssnMasked, dob, email].join('\t');
       };
+
       const extractIdStateLoanRow = () => {
-        const name = getText('#maincontent_Span_Name').toUpperCase();
-        const customerId = getText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
-        const stateRaw = getText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(2) > td:nth-child(4)');
-        const state = stateRaw.match(/[A-Z]{2}/)?.[0] || '';
-        const loanHeader = Array.from(document.querySelectorAll('div.Header')).find(div => div.textContent.includes("Loan#"));
-        const loanId = loanHeader?.textContent.match(/Loan#\s*(\d+)/)?.[1] || '';
+        const name = toUpper(safeText('#maincontent_Span_Name'));
+        const customerId = safeText('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
+        const stateRaw = safeText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(2) > td:nth-child(4)');
+        const state = stateAbbr(stateRaw);
+        const loanHeader = Array.from(document.querySelectorAll('div.Header')).find(div => /Loan#\s*\d+/.test(div.textContent));
+        const loanId = loanHeader?.textContent?.match(/Loan#\s*(\d+)/)?.[1] || '';
         return [customerId, state, loanId, name].join('\t');
       };
 
@@ -1218,11 +1241,11 @@ if (MODULES.lmsToDlAutofill) {
       if (!nameSpan || document.getElementById("copyMainRowBtn")) return;
 
       const mainBtn = createStyledButton("3rd Party Register Info", () => {
-        navigator.clipboard.writeText(extractMainRow()).then(() => showPopup("✅ Copied!"));
+        navigator.clipboard.writeText(extractMainRow()).then(() => showPopup("✅ Copied!")).catch(() => showPopup("❌ Clipboard copy failed", "error"));
       }, "copyMainRowBtn");
 
       const idBtn = createStyledButton("Check Registration Info", () => {
-        navigator.clipboard.writeText(extractIdStateLoanRow()).then(() => showPopup("✅ Copied!"));
+        navigator.clipboard.writeText(extractIdStateLoanRow()).then(() => showPopup("✅ Copied!")).catch(() => showPopup("❌ Clipboard copy failed", "error"));
       }, "copyIDStateBtn");
 
       const wrapper = document.createElement("span");
@@ -1230,18 +1253,53 @@ if (MODULES.lmsToDlAutofill) {
       wrapper.style.alignItems = "center";
       wrapper.style.gap = "6px";
       wrapper.style.marginLeft = "8px";
-
       wrapper.appendChild(mainBtn);
       wrapper.appendChild(idBtn);
       nameSpan.after(wrapper);
     };
 
+
+    const injectTriggerPIIButton = () => {
+      waitForElement("#maincontent_Span_Name", (nameSpan) => {
+        if (document.getElementById("copyTriggerPIIBtn")) return;
+
+        const btn = createStyledButton("Copy Trigger PII", async () => {
+          const stateRaw = safeText('#ContactSection > table.ProfileSectionTable > tbody > tr:nth-child(2) > td:nth-child(4)');
+          const state = stateAbbr(stateRaw);
+          const headerNode = Array.from(document.querySelectorAll('div.Header')).find(div => /Loan#\s*\d+/.test(div.textContent));
+          const loanId = headerNode?.textContent?.match(/Loan#\s*(\d+)/)?.[1] || '';
+          const fullName = toUpper(safeText('#maincontent_Span_Name'));
+
+
+          const sep12 = settings.triggerPII.skipSecondCell ? '\t\t' : '\t';
+          const tsv = state + sep12 + loanId + '\t' + fullName;
+
+          const ok = await copyText(tsv);
+          showPopup(ok ? "✅ Trigger PII copied (TSV)" : "❌ Clipboard copy failed", ok ? "success" : "error");
+        }, "copyTriggerPIIBtn");
+
+        const siblingWrapper = nameSpan.nextElementSibling;
+        if (siblingWrapper && siblingWrapper.tagName === 'SPAN') siblingWrapper.appendChild(btn);
+        else {
+          const wrap = document.createElement("span");
+          wrap.style.display = "inline-flex";
+          wrap.style.alignItems = "center";
+          wrap.style.gap = "6px";
+          wrap.style.marginLeft = "8px";
+          wrap.appendChild(btn);
+          nameSpan.after(wrap);
+        }
+      });
+    };
+
     setTimeout(() => {
       injectLMSButton();
       injectRegisterButtons();
+      injectTriggerPIIButton();
     }, 500);
   }
 
+  // ---------- CreateRequest (existing) ----------
   if (location.href.includes("CreateRequest.aspx")) {
     const insertButtons = () => {
       const pasteTarget = document.querySelector(
@@ -1257,10 +1315,7 @@ if (MODULES.lmsToDlAutofill) {
           try {
             const text = await navigator.clipboard.readText();
             const data = JSON.parse(text);
-            const setValue = (sel, val) => {
-              const el = document.querySelector(sel);
-              if (el) el.value = val;
-            };
+            const setValue = (sel, val) => { const el = document.querySelector(sel); if (el) el.value = val; };
             setValue('#tbCustomerId', data.customerId);
             setValue('#tbFirstName', data.firstName);
             setValue('#tbLastName', data.lastName);
@@ -1278,13 +1333,10 @@ if (MODULES.lmsToDlAutofill) {
 
       if (!document.getElementById("clearLMSFieldsBtn")) {
         const clearBtn = createStyledButton("Clear All Fields", () => {
-          const clearValue = (sel) => {
-            const el = document.querySelector(sel);
-            if (el) el.value = '';
-          };
+          const clearValue = (sel) => { const el = document.querySelector(sel); if (el) el.value = ''; };
           ['#tbCustomerId', '#tbFirstName', '#tbLastName', '#tbAccountNum',
-            '#tbRoutingNum', '#ctl00_ctl00_MainContent_MainContent_tbEmailAddress',
-            '#ctl00_ctl00_MainContent_MainContent_tbPhoneNumber'].forEach(clearValue);
+           '#tbRoutingNum', '#ctl00_ctl00_MainContent_MainContent_tbEmailAddress',
+           '#ctl00_ctl00_MainContent_MainContent_tbPhoneNumber'].forEach(clearValue);
           showPopup("Fields cleared");
         }, "clearLMSFieldsBtn", true);
         clearTarget.appendChild(clearBtn);
@@ -1295,7 +1347,8 @@ if (MODULES.lmsToDlAutofill) {
     observer.observe(document.body, { childList: true, subtree: true });
     setTimeout(insertButtons, 500);
   }
-}
+
+})();
 
 /*** ============ Max Exposure (always rightmost among left actions) ============ ***/
 
@@ -1583,7 +1636,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
       .find(l => normalize(l.textContent) === 'bankruptcy');
     return lbl ? document.getElementById(lbl.getAttribute('for')) : null;
   }
-  function findOriginalStage()   { return document.getElementById('maincontent_BankruptcyStage'); }
+  function findOriginalStage() { return document.getElementById('maincontent_BankruptcyStage'); }
   function findOriginalChapter() { return document.getElementById('maincontent_BankruptcyChapter'); }
 
 
@@ -1618,7 +1671,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
       if (a !== b) rebuild(); else dup.value = orig.value;
     };
     orig.addEventListener('change', sync);
-    orig.addEventListener('input',  sync);
+    orig.addEventListener('input', sync);
 
     return dup;
   }
@@ -1634,7 +1687,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
     container.appendChild(list);
 
     const origBk = findOrigBankruptcyInput(scopeEl);
-    const stageOrig   = findOriginalStage();
+    const stageOrig = findOriginalStage();
     const chapterOrig = findOriginalChapter();
 
     for (const it of items) {
