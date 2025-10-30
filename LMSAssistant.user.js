@@ -2,9 +2,11 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.18
+// @version      2.19
 // @description  LMS Assistant PRO with Sales-specific modules only
+// @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
+// @match        https://portal.decisionlogic.com/CreateRequest.aspx*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Sales/LMSAssistant.user.js
 // @grant        GM_xmlhttpRequest
@@ -17,11 +19,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.18";
+    const CURRENT_VERSION = "2.19";
 
  const changelog = [
-  "🆕 NEW MODULE - Max exposure button",
-  "🆕 NEW MODULE - Loan Status Cleaner"
+  "🆕 The functionality of the Copy/Paste module has been expanded",
+  "🆕 Added — DecisionLogic CreateRequest: Paste from LMS and Clear All Fields buttons"
 ];
 
 
@@ -872,62 +874,256 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
 
     waitForIBVButton();
 }
-    /*** ============ Copy/Paste LMS ============ ***/
-    if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
+ /* ============ Copy/Paste module bound to MODULES.copyPaste toggle ============ */
+(function() {
+  'use strict';
+
+  // Гарантуємо наявність об'єктів
+  if (!window.MODULES) window.MODULES = {};
+  if (typeof MODULES.copyPaste === 'undefined') MODULES.copyPaste = true;
+
+  // Допоміжні (ідентичні стилі як у вихідному модулі)
+  const showPopup = (text, type = "success") => {
+    try {
+      const popup = document.createElement('div');
+      popup.textContent = text;
+      Object.assign(popup.style, {
+        position: 'fixed',
+        top: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: type === 'error' ? '#f8d7da' : '#d4edda',
+        color: type === 'error' ? '#721c24' : '#155724',
+        padding: '10px 20px',
+        borderRadius: '8px',
+        fontWeight: 'bold',
+        zIndex: '9999',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.2)'
+      });
+      document.body.appendChild(popup);
+      setTimeout(() => popup.remove(), 2500);
+    } catch (_) {}
+  };
+  const createStyledButton = (label, onClick, id, dlStyle = false) => {
+    const btn = document.createElement("input");
+    btn.type = "button";
+    btn.value = label;
+    if (id) btn.id = id;
+    const style = dlStyle ? {
+      display: "inline-block",
+      margin: "0 4px 5px 0",
+      lineHeight: "1.42857143",
+      textAlign: "center",
+      whiteSpace: "nowrap",
+      verticalAlign: "middle",
+      touchAction: "manipulation",
+      userSelect: "none",
+      backgroundImage: "none",
+      border: "1px solid transparent",
+      borderRadius: "4px",
+      WebkitAppearance: "button",
+      cursor: "pointer",
+      backgroundColor: "#166b9d",
+      color: "white",
+      padding: "3px 6px",
+      fontSize: "12px",
+      fontWeight: "normal"
+    } : {
+      padding: "4px",
+      fontFamily: "Arial, Helvetica, sans-serif",
+      fontWeight: "bold",
+      fontSize: "12px",
+      border: "1px solid #2e9fd8",
+      background: "#2e9fd8 url(Images/global-button-back.png) left top repeat-x",
+      color: "#DFDFDF",
+      cursor: "pointer",
+      marginLeft: "8px"
+    };
+    Object.assign(btn.style, style);
+    btn.addEventListener('click', onClick);
+    return btn;
+  };
+  const waitForElement = (selector, callback) => {
+    const el = document.querySelector(selector);
+    if (el) { callback(el); return; }
+    const observer = new MutationObserver(() => {
+      const el2 = document.querySelector(selector);
+      if (el2) { observer.disconnect(); callback(el2); }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  };
+  const safeText = sel => document.querySelector(sel)?.textContent?.trim() || '';
+
+  // Старт/Стоп усього функціоналу Copy/Paste
+  let observerDL = null;
+  const startCopyPaste = () => {
+    // CustomerDetails: кнопка телефонів (старий код)
+    if (location.href.includes('CustomerDetails')) {
+      if (!document.getElementById('copyCellNumberBtn')) {
         function isUSPhoneNumber(str) {
-            var regex = /^\(?(\d{3})\)?[- .]?(\d{3})[- .]?(\d{4})$/;
-            return regex.test(str);
+          var regex = /^\(?(\d{3})\)?[- .]?(\d{3})[- .]?(\d{4})$/;
+          return regex.test(str);
         }
-
         function displayUSPhoneNumbers() {
-            var text = document.body.innerText;
-            var matches = text.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g);
-            if (!matches) {
-                alert("No phone numbers found on this page.");
-                return;
-            }
-            var usPhoneNumbers = matches.filter(isUSPhoneNumber);
-            if (usPhoneNumbers.length === 0) {
-                alert("No US phone numbers found on this page.");
-            } else if (usPhoneNumbers.length === 1) {
-                var phoneNumber = "211" + usPhoneNumbers[0];
-                navigator.clipboard.writeText(phoneNumber)
-                  .then(() => {
-                    console.log("Copied: " + phoneNumber);
-                  })
-                  .catch(err => console.error("Failed to copy:", err));
-            } else {
-                var phoneNumber2 = "211" + usPhoneNumbers[1];
-                navigator.clipboard.writeText(phoneNumber2)
-                  .then(() => {
-                    console.log("Copied: " + phoneNumber2);
-                  })
-                  .catch(err => console.error("Failed to copy:", err));
-            }
+          var text = document.body.innerText;
+          var matches = text.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g);
+          if (!matches) {
+            alert("No phone numbers found on this page.");
+            return;
+          }
+          var usPhoneNumbers = matches.filter(isUSPhoneNumber);
+          if (usPhoneNumbers.length === 0) {
+            alert("No US phone numbers found on this page.");
+          } else if (usPhoneNumbers.length === 1) {
+            var phoneNumber = "211" + usPhoneNumbers[0];
+            navigator.clipboard.writeText(phoneNumber)
+              .then(() => { console.log("Copied: " + phoneNumber); })
+              .catch(err => console.error("Failed to copy:", err));
+          } else {
+            var phoneNumber2 = "211" + usPhoneNumbers[1];
+            navigator.clipboard.writeText(phoneNumber2)
+              .then(() => { console.log("Copied: " + phoneNumber2); })
+              .catch(err => console.error("Failed to copy:", err));
+          }
         }
+        const button = document.createElement("button");
+        button.id = 'copyCellNumberBtn';
+        button.innerHTML = "Copy Cell Number";
+        Object.assign(button.style, {
+          position: "fixed",
+          bottom: "20px",
+          right: "20px",
+          zIndex: "9999",
+          padding: "6px 12px",
+          background: "#2e9fd8",
+          color: "#fff",
+          border: "none",
+          borderRadius: "4px",
+          cursor: "pointer",
+          fontWeight: "bold"
+        });
+        button.onclick = displayUSPhoneNumbers;
+        document.body.appendChild(button);
+      }
 
-        function createCopyButton() {
-            var button = document.createElement("button");
-            button.innerHTML = "Copy Cell Number";
-            Object.assign(button.style, {
-                position: "fixed",
-                bottom: "20px",
-                right: "20px",
-                zIndex: "9999",
-                padding: "6px 12px",
-                background: "#2e9fd8",
-                color: "#fff",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontWeight: "bold"
-            });
-            button.onclick = displayUSPhoneNumbers;
-            document.body.appendChild(button);
-        }
+      // CustomerDetails: "Copy info"
+      const injectLMSButton = () => {
+        waitForElement("#ctl00_EditBankInformationLink", (referenceNode) => {
+          if (!MODULES.copyPaste) return; // не вставляти, якщо вимкнено за час спостереження
+          if (document.getElementById("copyForDLBtn")) return;
 
-        window.addEventListener('load', createCopyButton);
+          const wrapper = document.createElement("span");
+          wrapper.style.display = "inline-flex";
+          wrapper.style.alignItems = "center";
+          wrapper.style.gap = "4px";
+
+          referenceNode.parentNode.insertBefore(wrapper, referenceNode);
+          wrapper.appendChild(referenceNode);
+
+          const button = createStyledButton("Copy info", async () => {
+            const customerId = safeText('#mainpropertiesview > table:nth-child(3) td:nth-child(4)');
+            const fullName = safeText('#maincontent_Span_Name');
+            const [firstName, ...rest] = fullName.split(" ");
+            const lastName = rest.join(" ") || "";
+            const accountNumber = safeText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(6) > td:nth-child(2)');
+            const routingNumber = safeText('#BankSection > table.ProfileSectionTable > tbody > tr:nth-child(5) > td:nth-child(2)');
+            const email = safeText('#ctl00_Span_Email');
+            const phone = safeText('#ctl00_Span_CellPhone > span');
+            const data = { customerId, firstName, lastName, accountNumber, routingNumber, email, phone };
+            try {
+              await navigator.clipboard.writeText(JSON.stringify(data));
+              showPopup("✅ Info copied to clipboard");
+            } catch {
+              showPopup("❌ Clipboard copy failed", "error");
+            }
+          }, "copyForDLBtn");
+
+          wrapper.appendChild(button);
+        });
+      };
+      setTimeout(() => { if (MODULES.copyPaste) injectLMSButton(); }, 500);
     }
+
+    // DecisionLogic: кнопки Paste/Clear
+    if (location.href.includes("CreateRequest.aspx")) {
+      const insertButtons = () => {
+        if (!MODULES.copyPaste) return;
+        const pasteTarget = document.querySelector("#ctl00_ctl00_MainContent_MainContent_pnlSections23 > table:nth-child(1) > tbody > tr:nth-child(4) > td:nth-child(3)");
+        const clearTarget = document.querySelector("#ctl00_ctl00_MainContent_MainContent_pnlSections23 > table:nth-child(1) > tbody > tr:nth-child(5) > td:nth-child(3)");
+        if (!pasteTarget || !clearTarget) return;
+
+        if (!document.getElementById("pasteFromLMSBtn")) {
+          const pasteBtn = createStyledButton("Paste from LMS", async () => {
+            try {
+              const text = await navigator.clipboard.readText();
+              const data = JSON.parse(text);
+              const setValue = (sel, val) => { const el = document.querySelector(sel); if (el) el.value = val; };
+              setValue('#tbCustomerId', data.customerId);
+              setValue('#tbFirstName', data.firstName);
+              setValue('#tbLastName', data.lastName);
+              setValue('#tbAccountNum', data.accountNumber);
+              setValue('#tbRoutingNum', data.routingNumber);
+              setValue('#ctl00_ctl00_MainContent_MainContent_tbEmailAddress', data.email);
+              setValue('#ctl00_ctl00_MainContent_MainContent_tbPhoneNumber', data.phone);
+              showPopup("✅ Info pasted from clipboard");
+            } catch {
+              showPopup("⚠️ Invalid or empty clipboard", "error");
+            }
+          }, "pasteFromLMSBtn", true);
+          pasteTarget.appendChild(pasteBtn);
+        }
+
+        if (!document.getElementById("clearLMSFieldsBtn")) {
+          const clearBtn = createStyledButton("Clear All Fields", () => {
+            const clearValue = (sel) => { const el = document.querySelector(sel); if (el) el.value = ''; };
+            ['#tbCustomerId','#tbFirstName','#tbLastName','#tbAccountNum','#tbRoutingNum','#ctl00_ctl00_MainContent_MainContent_tbEmailAddress','#ctl00_ctl00_MainContent_MainContent_tbPhoneNumber'].forEach(clearValue);
+            showPopup("Fields cleared");
+          }, "clearLMSFieldsBtn", true);
+          clearTarget.appendChild(clearBtn);
+        }
+      };
+      insertButtons();
+      observerDL = new MutationObserver(insertButtons);
+      observerDL.observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  const stopCopyPaste = () => {
+    document.getElementById('copyCellNumberBtn')?.remove();
+    document.getElementById('copyForDLBtn')?.remove();
+    document.getElementById('pasteFromLMSBtn')?.remove();
+    document.getElementById('clearLMSFieldsBtn')?.remove();
+    observerDL?.disconnect?.();
+  };
+
+  // Ініціалізація за поточним станом MODULES.copyPaste
+  if (MODULES.copyPaste) startCopyPaste();
+
+  // Підписка на ваш handler перемикачів (якщо у вас є глобальна функція керування)
+  // Якщо у вас є onModuleToggle(name, enabled) — допишіть:
+  if (typeof window.onModuleToggle === 'function') {
+    const prev = window.onModuleToggle;
+    window.onModuleToggle = function(name, enabled) {
+      try { prev.apply(this, arguments); } catch (_) {}
+      if (name === 'copyPaste') {
+        MODULES.copyPaste = !!enabled;
+        if (MODULES.copyPaste) startCopyPaste(); else stopCopyPaste();
+      }
+    };
+  } else {
+    // Якщо немає централізованого колбеку, підв’яжемося до кліків по тумблеру за data-name="copyPaste"
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-module-name="copyPaste"],[data-name="copyPaste"]');
+      if (!t) return;
+      // Затримка, щоб встиг оновитись MODULES.copyPaste вашим кодом
+      setTimeout(() => {
+        if (MODULES.copyPaste) startCopyPaste(); else stopCopyPaste();
+      }, 0);
+    }, true);
+  }
+
+})();
+
 
     /*** ============ QC LMS Search Assistant ============ ***/
     if (MODULES.qcSearch && location.href.includes('CustomersReport')) {
@@ -1225,7 +1421,7 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
   }
 }
 
-/*** ============ Max Exposure (always rightmost among left actions) ============ ***/
+/*** ============ Max Exposure ============ ***/
 
 if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
   const API_URL = 'https://api.creditsense.ai/';
@@ -1429,7 +1625,7 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
 /*** ============ CRM Status Cleaner (module) — Support ============ ***/
 if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
 
-  // Конфіг whitelist для Support
+  // whitelist for Support
   const RAW_ALLOWED = [
     'Never Answered',
     'TBW',
@@ -1454,12 +1650,12 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
   const normalize = (s) => (s || '').toString().replace(/\u00A0/g, ' ').trim().toLowerCase();
   const ALLOWED = new Set(RAW_ALLOWED.map(normalize));
 
-  // Ключі/ID
+  // ID
   const LS_MODE = 'crmBackOfficeMode'; // 'on' | 'off'
   const COMPACT_ID = 'crmStatusCompactList';
   const TOGGLER_ID = 'crmBackOfficeToggle';
 
-  // Guard та Observer
+  
   let working = false;
   let domObserver = null;
 
@@ -1516,7 +1712,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
     return res;
   }
 
-  // Побудова компактного списку (без inline-опцій)
+  
   function buildList(container, title, items, scopeEl) {
     container.innerHTML = '';
     const t = document.createElement('div');
@@ -1539,7 +1735,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
       lb.addEventListener('click', () => cb.click());
 
       cb.addEventListener('change', () => {
-        it.input.click(); // тригеримо нативні обробники CRM
+        it.input.click(); 
         cb.checked = it.input.checked;
       });
 
@@ -1632,7 +1828,6 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
     setupObserver(getMode);
   })();
 }
-
 
     /*** ============ Overpaid Check module ============ ***/
     if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
