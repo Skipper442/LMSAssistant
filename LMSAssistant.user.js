@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.20
+// @version      2.21
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -19,11 +19,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.20";
+    const CURRENT_VERSION = "2.21";
 
  const changelog = [
-  "🆕 The functionality of the Copy/Paste module has been expanded",
-  "🆕 Added — DecisionLogic CreateRequest: Paste from LMS and Clear All Fields buttons"
+
+  " Deleted — Overpaid module checker "
 ];
 
 
