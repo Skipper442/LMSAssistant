@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.19
+// @version      2.20
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -19,7 +19,7 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.19";
+    const CURRENT_VERSION = "2.20";
 
  const changelog = [
   "🆕 The functionality of the Copy/Paste module has been expanded",
@@ -97,7 +97,6 @@
         emailFilter: true,
         copyPaste: true,
         qcSearch: true,
-        overpaidCheck: true,
         ibvShortener: true,
         remarkFilter: true,
         maxExposure: true,
@@ -111,7 +110,6 @@
         emailFilter: 'Email Filter',
         copyPaste: 'Copy/Paste',
         qcSearch: 'QC Search',
-        overpaidCheck: 'Overpaid Check',
         ibvShortener: 'IBV Shortener',
         remarkFilter: 'Remark Filter',
         maxExposure: 'Max Exposure',
@@ -125,7 +123,6 @@
         emailFilter: "Filters the list of email templates",
         copyPaste: "Adds phone copy button",
         qcSearch: "QC Search — quick phone-based lookup",
-        overpaidCheck: "Checks overpaid status and options for potential refinance",
         ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
         remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones",
         maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
@@ -1096,11 +1093,11 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
     observerDL?.disconnect?.();
   };
 
-  // Ініціалізація за поточним станом MODULES.copyPaste
+  
   if (MODULES.copyPaste) startCopyPaste();
 
-  // Підписка на ваш handler перемикачів (якщо у вас є глобальна функція керування)
-  // Якщо у вас є onModuleToggle(name, enabled) — допишіть:
+  
+ 
   if (typeof window.onModuleToggle === 'function') {
     const prev = window.onModuleToggle;
     window.onModuleToggle = function(name, enabled) {
@@ -1111,11 +1108,11 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
       }
     };
   } else {
-    // Якщо немає централізованого колбеку, підв’яжемося до кліків по тумблеру за data-name="copyPaste"
+    
     document.addEventListener('click', (e) => {
       const t = e.target.closest('[data-module-name="copyPaste"],[data-name="copyPaste"]');
       if (!t) return;
-      // Затримка, щоб встиг оновитись MODULES.copyPaste вашим кодом
+      
       setTimeout(() => {
         if (MODULES.copyPaste) startCopyPaste(); else stopCopyPaste();
       }, 0);
@@ -1828,91 +1825,5 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
     setupObserver(getMode);
   })();
 }
-
-    /*** ============ Overpaid Check module ============ ***/
-    if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
-        const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
-        const statusCells = document.querySelectorAll(statusColumnSelector);
-        let eligibleStatusFound = false;
-        statusCells.forEach(statusCell => {
-            const status = statusCell.textContent.trim();
-            const allowedStatuses = ["Gold", "Platinum", "VIP", "Diamond"];
-            if (allowedStatuses.includes(status)) {
-                eligibleStatusFound = true;
-            }
-        });
-
-        if (eligibleStatusFound) {
-            const extractAmount = (element) => {
-                return parseFloat(element.textContent.trim().replace('$', '').replace(',', ''));
-            };
-
-            const displayPercentage = (percentage, payments, status) => {
-                const percentageElement = document.createElement('span');
-                percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
-                percentageElement.classList.add('loan-comparison-tooltip');
-                if (percentage > 20) {
-                    if (payments < 3 && !status.includes("Paid in Full")) {
-                        percentageElement.style.color = '#de9d1b';
-                        percentageElement.title = "Not enough payments made for potential refinancing.";
-                    } else if (status.includes("Active") && status.includes("In-House Collections")) {
-                        percentageElement.style.color = 'red';
-                        percentageElement.title = "Last active loan is in collections.";
-                    } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
-                        percentageElement.style.color = 'red';
-                        percentageElement.title = "Customer is in collection.";
-                    } else {
-                        percentageElement.style.color = 'green';
-                        percentageElement.title = "Might be eligible, check with TL.";
-                    }
-                    percentageElement.style.fontWeight = '900';
-                } else {
-                    percentageElement.style.color = 'red';
-                    percentageElement.style.fontWeight = 'bold';
-                }
-                const totalPaidElement = document.querySelector(totalPaidSelector);
-                totalPaidElement.appendChild(percentageElement);
-            };
-
-            const calculatePercentage = (totalPaid, totalPrincipalLoaned) => {
-                return ((totalPaid - totalPrincipalLoaned) / totalPrincipalLoaned) * 100;
-            };
-
-            const totalPrincipalLoanedSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(2)';
-            const totalPaidSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(4)';
-
-            const loanStatusCells = document.querySelectorAll('.DataTable.LoansTbl tbody tr td:nth-child(3)');
-            let lastEligibleRowIndex = -1;
-            loanStatusCells.forEach((statusCell, index) => {
-                const status = statusCell.textContent.trim();
-                if (status.includes("Active") || status.includes("Paid in Full")) {
-                    lastEligibleRowIndex = index;
-                } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
-                    lastEligibleRowIndex = index;
-                }
-            });
-
-            if (lastEligibleRowIndex !== -1) {
-                const totalPrincipalLoanedElement = document.querySelector(totalPrincipalLoanedSelector);
-                const totalPaidElement = document.querySelector(totalPaidSelector);
-                if (totalPrincipalLoanedElement && totalPaidElement) {
-                    const totalPrincipalLoaned = extractAmount(totalPrincipalLoanedElement);
-                    const totalPaid = extractAmount(totalPaidElement);
-                    const allRows = document.querySelectorAll('.DataTable.LoansTbl tbody tr');
-                    const lastEligibleRow = allRows[lastEligibleRowIndex];
-                    const paymentsElement = lastEligibleRow.querySelector('td:nth-child(11)');
-                    const payments = parseInt(paymentsElement.textContent.trim());
-                    const status = lastEligibleRow.querySelector('td:nth-child(3)').textContent.trim();
-                    const percentage = calculatePercentage(totalPaid, totalPrincipalLoaned);
-                    displayPercentage(percentage, payments, status);
-                } else {
-                    console.error('One or more elements not found.');
-                }
-            } else {
-                console.log('No clients with eligible statuses found.');
-            }
-        } else {
-            console.log('No clients with eligible statuses found.');
-        }
-    }
+    
 })();
