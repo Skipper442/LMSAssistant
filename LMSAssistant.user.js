@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.51
+// @version      2.52
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -18,14 +18,13 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.51";
+    const CURRENT_VERSION = "2.52";
 
- const changelog = [
-
-  "🆕 NEW MODULE - Loyalty Points Calc: Tracks refinance, Helps you to adjust loyalty points, and adds notes per Loan#";
-  " Overpaid module - adjusted to 10% limit"
-  
+const changelog = [
+  "🆕 NEW MODULE - Loyalty Points Calc: Tracks refinance, Helps you to adjust loyalty points, and adds notes per Loan#",
+  "Overpaid module - adjusted to 10% limit"
 ];
+
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
     if (savedVersion !== CURRENT_VERSION) {
