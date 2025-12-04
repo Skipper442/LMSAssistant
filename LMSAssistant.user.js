@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.5
+// @version      2.51
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -18,11 +18,12 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.5";
+    const CURRENT_VERSION = "2.51";
 
  const changelog = [
 
-  "🆕 NEW MODULE - Loyalty Points Calc: Tracks refinance, Helps you to adjust loyalty points, and adds notes per Loan#"
+  "🆕 NEW MODULE - Loyalty Points Calc: Tracks refinance, Helps you to adjust loyalty points, and adds notes per Loan#";
+  " Overpaid module - adjusted to 10% limit"
   
 ];
 
@@ -2156,7 +2157,7 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
             percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
             percentageElement.classList.add('loan-comparison-tooltip');
 
-            if (percentage > 20) {
+            if (percentage > 10) {
                 if (payments < 3 && !status.includes("Paid in Full")) {
                     percentageElement.style.color = '#de9d1b';
                     percentageElement.title = "Not enough payments made for potential refinancing.";
