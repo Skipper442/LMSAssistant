@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.53
+// @version      2.54
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -18,12 +18,14 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.53";
+    const CURRENT_VERSION = "2.54";
 
 const changelog = [
-  "🆕 NEW MODULE - Early Pay Bank module checker"
-
+  "✅ Loyalty Point Calc - Triggers only when all remarks are added",
+  "✅ Loyalty Point Calc - Triggers for loans that are Refinance only",
+  "✅ Loyalty Point Calc - Notes read/written strictly by last loanid (*loan that is higher on the page)"
 ];
+
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -1838,7 +1840,7 @@ if (MODULES.earlyPayBank && location.href.includes('CustomerDetails.aspx')) {
     })();
 }
 
-/*** ============ LMS Loyalty Refinance Helper ============ ***/
+/*** ============ LMS Loyalty Refinance Helper (by remarks) ============ ***/
 if (MODULES.loyaltyRefi) {
 
     (function () {
@@ -1846,6 +1848,33 @@ if (MODULES.loyaltyRefi) {
 
         const MULTIPLIER = 0.5;
         const BONUS = 275;
+
+        const REMARKS_CONFIG = {
+            checkDelay: 1500,
+            debounce: 300
+        };
+
+        const REQUIRED_REMARKS = [
+            'no duplicates',
+            'personal info verification',
+            'phone verification',
+            'amount applied for',
+            'verification of employment',
+            'before/after',
+            'bank account # and aba verified',
+            't&c read and agreed',
+            'minimum amount the customer agrees to',
+            'bank acct matches online banking acct',
+            'checking account',
+            'direct deposit verified on online banking',
+            'due date & pay schedule verified',
+            'all accounts checked on dl',
+            'final approved amount',
+            'loan type matches cust loyalty status',
+            'loan amount fixed',
+            'promotion code',
+            'other'
+        ];
 
         const href = location.href;
 
@@ -1855,15 +1884,23 @@ if (MODULES.loyaltyRefi) {
             initPopup();
         }
 
+        // ================= Common helpers =================
 
         function storageKey(loanId) {
             return `loyaltyRefi_${loanId}`;
         }
 
-        function parseLoanIdFromHeader(headerEl) {
-            const text = headerEl.textContent || '';
+        function parseLoanIdFromHeaderText(text) {
             const m = text.match(/Loan#\s*(\d+)/i);
             return m ? m[1] : null;
+        }
+
+        function getActiveLoanId(doc) {
+            const root = doc || document;
+            const headers = Array.from(root.querySelectorAll('div.Header'));
+            const loanHeader = headers.find(h => (h.textContent || '').includes('Loan#'));
+            if (!loanHeader) return null;
+            return parseLoanIdFromHeaderText(loanHeader.textContent || '');
         }
 
         function parseLMSDateFromCDT(dateStr) {
@@ -1877,12 +1914,17 @@ if (MODULES.loyaltyRefi) {
 
         function GM_GetSafe(key) {
             try { return GM_getValue ? GM_getValue(key, null) : null; }
-            catch (e) { console.warn('GM_getValue failed', e); return null; }
+            catch (e) { return null; }
         }
 
         function GM_SetSafe(key, value) {
             try { if (typeof GM_setValue === 'function') GM_setValue(key, value); }
-            catch (e) { console.warn('GM_setValue failed', e); }
+            catch (e) { /* ignore */ }
+        }
+
+        function GM_DeleteSafe(key) {
+            try { if (typeof GM_deleteValue === 'function') GM_deleteValue(key); }
+            catch (e) { /* ignore */ }
         }
 
         function computePointsToRemove(refiAmount) {
@@ -1890,7 +1932,110 @@ if (MODULES.loyaltyRefi) {
             return Math.round(refiAmount * MULTIPLIER + BONUS);
         }
 
-        // ===== Notes by LOANID =====
+        // ===== Refinance detector (only for active loan) =====
+        function isRefinanceLoan(doc) {
+            const root = doc || document;
+            const activeLoanId = getActiveLoanId(root);
+            if (!activeLoanId) return false;
+
+            const span = root.querySelector(
+                `#loan_${activeLoanId} > table.ProfileSectionTable > tbody > tr:nth-child(10) > td:nth-child(2) > span`
+            );
+            if (!span) return false;
+
+            const txt = (span.textContent || '').toLowerCase();
+            return txt.includes('refinance');
+        }
+
+        // ================== REMARKS DETECTOR ==================
+
+        
+        function findRemarksCellForActiveLoan(doc) {
+            const root = doc || document;
+            const activeLoanId = getActiveLoanId(root);
+            if (!activeLoanId) return null;
+
+            const loanDiv = root.querySelector(`div[id="loan_${activeLoanId}"]`);
+            if (!loanDiv) return null;
+
+            const tds = Array.from(loanDiv.querySelectorAll('table.ProfileSectionTable td'));
+            return tds.find(td => (td.textContent || '').toLowerCase().includes('no duplicates')) || null;
+        }
+
+        function hasAllRequiredRemarks(text) {
+            const normalizedText = text.toLowerCase();
+            const missing = REQUIRED_REMARKS.filter(r => !normalizedText.includes(r));
+            return missing.length === 0;
+        }
+
+        let lastCheckTime = 0;
+
+        async function checkRemarksAndUpdate() {
+            const now = Date.now();
+            if (now - lastCheckTime < REMARKS_CONFIG.debounce) return;
+            lastCheckTime = now;
+
+            const activeLoanId = getActiveLoanId(document);
+            if (!activeLoanId) return;
+
+            const cell = findRemarksCellForActiveLoan(document);
+
+            let allRemarks = false;
+            if (cell) {
+                const text = cell.textContent || cell.innerText || '';
+                allRemarks = hasAllRequiredRemarks(text);
+            }
+
+            const info = getCurrentLoyaltyPointsInfo();
+
+            
+            if (!allRemarks) {
+                if (info) clearMarkers(info.valueTd);
+                GM_DeleteSafe(storageKey(activeLoanId));
+                return;
+            }
+
+            
+            if (!isRefinanceLoan(document)) {
+                if (info) clearMarkers(info.valueTd);
+                GM_DeleteSafe(storageKey(activeLoanId));
+                return;
+            }
+
+            
+            await updateLoyaltyStateForLoan(activeLoanId);
+        }
+
+        function initRemarksObserver() {
+            const observer = new MutationObserver((mutations) => {
+                let shouldCheck = false;
+
+                for (const mutation of mutations) {
+                    if (mutation.type !== 'childList' && mutation.type !== 'characterData') continue;
+                    const target = mutation.target;
+
+                    if (target.matches && target.matches('table.ProfileSectionTable td')) {
+                        shouldCheck = true; break;
+                    }
+                    if (target.querySelector && target.querySelector('table.ProfileSectionTable td')) {
+                        shouldCheck = true; break;
+                    }
+                }
+
+                if (shouldCheck) {
+                    setTimeout(checkRemarksAndUpdate, 100);
+                }
+            });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+        }
+
+        // ================== Notes helpers ==================
+
         async function fetchLoanNotesDocument(loanId) {
             const res = await fetch(`/plm.net/customers/CustomerNotes.aspx?loanid=${loanId}&isnosection=true`, {
                 credentials: 'include'
@@ -1948,10 +2093,7 @@ if (MODULES.loyaltyRefi) {
         async function addSystemNoteForLoanByLoanId(loanId, originalLP, removedLP, fixedLP) {
             const doc = await fetchLoanNotesDocument(loanId);
             const form = doc.querySelector('form');
-            if (!form) {
-                console.warn('Notes form not found for loan', loanId);
-                return;
-            }
+            if (!form) return;
 
             const noteText = buildLoyaltyNote(loanId, originalLP, removedLP, fixedLP);
 
@@ -1966,51 +2108,11 @@ if (MODULES.loyaltyRefi) {
                 body: formData,
                 credentials: 'include'
             });
-            console.log('LRM: System note added for loan', loanId, ':', noteText);
         }
 
         // =================================================================
         // 1) CustomerDetails.aspx
         // =================================================================
-        function setupCustomerDetails() {
-            const processedLoans = new Set();
-
-            async function scanHeadersAndHandle() {
-                try {
-                    const headers = Array.from(document.querySelectorAll('div.Header'));
-                    if (!headers.length) return;
-
-                    for (const h of headers) {
-                        const txt = (h.textContent || '').trim();
-                        const loanId = parseLoanIdFromHeader(h);
-                        if (!loanId) continue;
-
-                        const hasPending = txt.includes('/ Pending');
-                        const hasPA = txt.includes('Pending Approval');
-
-                        //
-                        if (!hasPending || !hasPA) continue;
-
-                        if (processedLoans.has(loanId)) {
-                            //
-                            ensureMarkerForLoan(loanId);
-                            continue;
-                        }
-
-                        processedLoans.add(loanId);
-                        await handleNewPendingApproval(loanId);
-                    }
-                } catch (e) {
-                    console.error('LRM scanHeadersAndHandle error', e);
-                }
-            }
-
-
-            setTimeout(scanHeadersAndHandle, 800);
-
-            setInterval(scanHeadersAndHandle, 2000);
-        }
-
         function getCurrentLoyaltyPointsInfo() {
             const link = document.querySelector('#ctl00_CustomerCustomFieldsRepeater_UpdateCustomFieldLink_1');
             if (!link) return null;
@@ -2026,12 +2128,16 @@ if (MODULES.loyaltyRefi) {
             return { currentPoints: current, valueTd };
         }
 
-        function markPointsNeedAdjustment(valueTd) {
-
+        function clearMarkers(valueTd) {
+            if (!valueTd) return;
+            const red = valueTd.querySelector('.loyalty-refi-note');
             const green = valueTd.querySelector('.loyalty-refi-done');
+            if (red) red.remove();
             if (green) green.remove();
+        }
 
-            if (valueTd.querySelector('.loyalty-refi-note')) return;
+        function markPointsNeedAdjustment(valueTd) {
+            clearMarkers(valueTd);
             const span = document.createElement('span');
             span.className = 'loyalty-refi-note';
             span.textContent = ' Need adjustment after refinance';
@@ -2042,19 +2148,14 @@ if (MODULES.loyaltyRefi) {
         }
 
         function markPointsAlreadyAdjusted(valueTd) {
-            const red = valueTd.querySelector('.loyalty-refi-note');
-            if (red) red.remove();
-
-            let span = valueTd.querySelector('.loyalty-refi-done');
-            if (!span) {
-                span = document.createElement('span');
-                span.className = 'loyalty-refi-done';
-                span.style.marginLeft = '6px';
-                span.style.color = '#28a745';
-                span.style.fontWeight = 'bold';
-                valueTd.appendChild(span);
-            }
+            clearMarkers(valueTd);
+            const span = document.createElement('span');
+            span.className = 'loyalty-refi-done';
             span.textContent = ' Already adjusted';
+            span.style.marginLeft = '6px';
+            span.style.color = '#28a745';
+            span.style.fontWeight = 'bold';
+            valueTd.appendChild(span);
         }
 
         function getRefinanceAmountForLoan() {
@@ -2070,34 +2171,26 @@ if (MODULES.loyaltyRefi) {
             return null;
         }
 
-        async function handleNewPendingApproval(pendingLoanId) {
-            console.log('LRM: handleNewPendingApproval for', pendingLoanId);
-
-            const headers = Array.from(document.querySelectorAll('div.Header'));
-            const hasActive = headers.some(h => (h.textContent || '').includes('/ Active'));
-            if (!hasActive) return;
-
+        async function updateLoyaltyStateForLoan(loanId) {
             const loyaltyInfo = getCurrentLoyaltyPointsInfo();
-            const lastAdj = await getLastAdjNoteForLoanByLoanId(pendingLoanId);
+            if (!loyaltyInfo) return;
+
+            const lastAdj = await getLastAdjNoteForLoanByLoanId(loanId);
 
             if (lastAdj) {
-                if (loyaltyInfo) {
-                    markPointsAlreadyAdjusted(loyaltyInfo.valueTd);
-                }
-                const payload = {
-                    pendingLoanId,
+                markPointsAlreadyAdjusted(loyaltyInfo.valueTd);
+                const payloadGreen = {
+                    pendingLoanId: loanId,
                     refinanceAmount: null,
-                    currentPoints: loyaltyInfo ? loyaltyInfo.currentPoints : null,
+                    currentPoints: loyaltyInfo.currentPoints,
                     pointsToRemove: null,
                     finalPoints: null,
                     lastAdjDate: lastAdj.dateString
                 };
-                GM_SetSafe(storageKey(pendingLoanId), payload);
-                console.log('LRM: loan already adjusted, payload =', payload);
+                GM_SetSafe(storageKey(loanId), payloadGreen);
                 return;
             }
 
-            if (!loyaltyInfo) return;
             markPointsNeedAdjustment(loyaltyInfo.valueTd);
 
             const refiAmount = getRefinanceAmountForLoan();
@@ -2107,33 +2200,24 @@ if (MODULES.loyaltyRefi) {
             if (pointsToRemove == null) return;
 
             const finalPoints = Math.max(0, loyaltyInfo.currentPoints - pointsToRemove);
-            const payload = {
-                pendingLoanId,
+            const payloadRed = {
+                pendingLoanId: loanId,
                 refinanceAmount: refiAmount,
                 currentPoints: loyaltyInfo.currentPoints,
                 pointsToRemove,
                 finalPoints,
                 lastAdjDate: null
             };
-            GM_SetSafe(storageKey(pendingLoanId), payload);
-            console.log('LRM: stored NEW payload =', payload);
+            GM_SetSafe(storageKey(loanId), payloadRed);
         }
 
-
-        async function ensureMarkerForLoan(loanId) {
-            const info = getCurrentLoyaltyPointsInfo();
-            if (!info) return;
-
-            const lastAdj = await getLastAdjNoteForLoanByLoanId(loanId);
-            if (lastAdj) {
-                markPointsAlreadyAdjusted(info.valueTd);
-            } else {
-                markPointsNeedAdjustment(info.valueTd);
-            }
+        function setupCustomerDetails() {
+            setTimeout(checkRemarksAndUpdate, REMARKS_CONFIG.checkDelay);
+            initRemarksObserver();
         }
 
         // =================================================================
-        // 2) EditCustomerCustomField.aspx
+        // 2) EditCustomerCustomField.aspx — UI
         // =================================================================
         function initPopup() {
             window.addEventListener('load', () => {
@@ -2146,28 +2230,40 @@ if (MODULES.loyaltyRefi) {
             const updateBtn = document.querySelector('#maincontent_Btn_Update');
             if (!pointsInput) return;
 
-            let loanId = null;
-            try {
-                const topDoc = window.top.document;
-                const headers = Array.from(topDoc.querySelectorAll('div.Header'));
-                const paHeader = headers.find(h =>
-                    (h.textContent || '').includes('/ Pending, Pending Approval')
-                );
-                if (paHeader) loanId = parseLoanIdFromHeader(paHeader);
-            } catch (e) {
-                console.warn('LRM Popup: cannot read parent headers', e);
+            const topDoc = window.top.document;
+            const loanId = getActiveLoanId(topDoc);
+            if (!loanId) return;
+
+            const ui = ensureUiContainer(pointsInput);
+
+            // if it's not Refinance → we just inform and don't show the calculator
+            if (!isRefinanceLoan(topDoc)) {
+                ui.textContent = 'This loan is not a refinance. Loyalty points adjustment is not required.';
+                return;
             }
 
-            if (!loanId) {
+            let allRemarks = false;
+            try {
+                const cell = findRemarksCellForActiveLoan(topDoc);
+                if (cell) {
+                    const txt = cell.textContent || cell.innerText || '';
+                    allRemarks = hasAllRequiredRemarks(txt);
+                }
+            } catch (e) {
+                allRemarks = false;
+            }
+
+            if (!allRemarks) {
+                ui.textContent = 'Please complete all required loan remarks before adjusting loyalty points.';
                 return;
             }
 
             let data = GM_GetSafe(storageKey(loanId));
+            const lastAdj = await getLastAdjNoteForLoanByLoanId(loanId);
 
-            if (!data || data.pointsToRemove == null || data.finalPoints == null) {
+            if (!lastAdj && (!data || (data.pointsToRemove == null || data.finalPoints == null))) {
                 try {
-                    const parentDoc = window.top.document;
-                    const spans = Array.from(parentDoc.querySelectorAll('span'));
+                    const spans = Array.from(topDoc.querySelectorAll('span'));
                     const cand = spans.filter(s => (s.textContent || '').includes('Refinance'));
                     let refiAmount = null;
                     for (const span of cand) {
@@ -2194,10 +2290,6 @@ if (MODULES.loyaltyRefi) {
                 }
             }
 
-            const lastAdj = await getLastAdjNoteForLoanByLoanId(loanId);
-
-            const ui = ensureUiContainer(pointsInput);
-
             if (!lastAdj && data && data.pointsToRemove != null && data.finalPoints != null) {
                 const finalPoints = data.finalPoints;
                 ui.innerHTML =
@@ -2218,13 +2310,13 @@ if (MODULES.loyaltyRefi) {
 
             } else if (lastAdj) {
                 ui.innerHTML =
-                    `Already adjusted<br>` +
+                    `Already adjusted for this loan.<br>` +
                     `Original LP = <b>${lastAdj.originalLP ?? '?'}</b>, ` +
                     `Removed LP = <b>${lastAdj.removedLP ?? '?'}</b>, ` +
                     `Fixed = <b>${lastAdj.fixedLP ?? '?'}</b>.`;
             } else {
                 ui.textContent =
-                    'Helper: no cached refinance data and no note for this loan.';
+                    'Helper: no refinance data for this loan.';
             }
 
             if (updateBtn && !updateBtn._lmsHooked) {
