@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.22
+// @version      2.23
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -19,11 +19,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.22";
+    const CURRENT_VERSION = "2.23";
 
  const changelog = [
 
-  " Added — Overpaid module checker "
+  " Added — Early Pay Bank module checker "
 ];
 
 
@@ -92,47 +92,46 @@
     // ===== End Version Check =====
 
     const MODULES = {
-        lmsAssistant: true, // Logic will apply but module is hidden
-        ibvButton: true,
-        emailFilter: true,
-        copyPaste: true,
-        qcSearch: true,
-        ibvShortener: true,
-        remarkFilter: true,
-        maxExposure: true,
-        overpaidCheck: true,
-        crmStatusCleaner: true
+    lmsAssistant: true, // Logic will apply but module is hidden
+    ibvButton: true,
+    emailFilter: true,
+    copyPaste: true,
+    qcSearch: true,
+    ibvShortener: true,
+    remarkFilter: true,
+    maxExposure: true,
+    overpaidCheck: true,
+    crmStatusCleaner: true,
+    earlyPayBank: true
+};
 
-    };
+const MODULE_LABELS = {
+    ibvButton: 'IBV Button',
+    emailFilter: 'Email Filter',
+    copyPaste: 'Copy/Paste',
+    qcSearch: 'QC Search',
+    ibvShortener: 'IBV Shortener',
+    remarkFilter: 'Remark Filter',
+    maxExposure: 'Max Exposure',
+    overpaidCheck: 'Overpaid Check',
+    crmStatusCleaner: 'Loan Status Cleaner',
+    earlyPayBank: 'Early Pay Bank'
+};
 
-    const MODULE_LABELS = {
+const MODULE_DESCRIPTIONS = {
+    lmsAssistant: "Highlights states, manages call hours",
+    ibvButton: "Adds a CRP button in LMS for quicker report access",
+    emailFilter: "Filters the list of email templates",
+    copyPaste: "Adds phone copy button",
+    qcSearch: "QC Search — quick phone-based lookup",
+    ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
+    remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones",
+    maxExposure: "Adds button to allow you calculate Max Exposure directly in LMS",
+    overpaidCheck: "Checks overpaid status and options for potential refinance",
+    crmStatusCleaner: "Reduces the list of loan statuses",
+    earlyPayBank: "Warns when customer’s primary bank is probably an early pay bank"
+};
 
-        ibvButton: 'IBV Button',
-        emailFilter: 'Email Filter',
-        copyPaste: 'Copy/Paste',
-        qcSearch: 'QC Search',
-        ibvShortener: 'IBV Shortener',
-        remarkFilter: 'Remark Filter',
-        maxExposure: 'Max Exposure',
-        overpaidCheck: 'Overpaid Check',
-        crmStatusCleaner: 'Loan Status Cleaner'
-
-
-    };
-
-      const MODULE_DESCRIPTIONS = {
-        lmsAssistant: "Highlights states, manages call hours",
-        ibvButton: "Adds a CRP button in LMS for quicker report access",
-        emailFilter: "Filters the list of email templates",
-        copyPaste: "Adds phone copy button",
-        qcSearch: "QC Search — quick phone-based lookup",
-        ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
-        remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones",
-        maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
-        overpaidCheck: "Checks overpaid status and options for potential refinance",
-        crmStatusCleaner: 'Reduces the list of loan statuses'
-
-    };
 
 
     Object.keys(MODULES).forEach(key => {
@@ -1623,8 +1622,6 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
   })();
 }
 
-
-
 /*** ============ Overpaid check module ============ ***/
 
 if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
@@ -1726,7 +1723,154 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
     }
 }
 
+/*** ============ Early Pay Bank Detector ============ ***/
+if (MODULES.earlyPayBank && location.href.includes('CustomerDetails.aspx')) {
+    (function () {
+        'use strict';
 
+        const DANGEROUS_BANKS = [
+            'HUNTINGTON',
+            'REGIONS',
+            'CITIZENS',
+            'DISCOVER',
+            'NAVY FEDERAL',
+            'FIFTH',
+            'CREDIT UNION',
+            ' CU ',
+            ' FCU',
+            'C U',
+            'C/U'
+        ];
+
+        const CONFIG = {
+            primaryBankSelector: '#BankSection > table:nth-child(4) > tbody > tr:nth-child(2) > td:nth-child(2)'
+        };
+
+        let lastDangerousName = null; // remembers last dangerous bank text
+
+        function showStyledPopup(title, items, noIcon = false) {
+            const box = document.createElement('div');
+
+            const header = document.createElement('h3');
+            header.innerHTML = noIcon ? title : `<span style="color: red;">📌</span> ${title}`;
+            header.style.marginBottom = '10px';
+
+            const text = document.createElement('div');
+            text.innerHTML = items.map(txt => `• ${txt}`).join('<br>');
+            text.style.textAlign = 'left';
+
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'OK';
+            Object.assign(closeBtn.style, {
+                marginTop: '10px',
+                padding: '4px 12px',
+                border: '1px solid #a27c33',
+                borderRadius: '4px',
+                background: '#5c4400',
+                backgroundImage: 'url(Images/global-button-back.png)',
+                backgroundRepeat: 'repeat-x',
+                color: '#fff',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                fontFamily: 'Arial, Helvetica, sans-serif'
+            });
+            closeBtn.onclick = () => box.remove();
+
+            Object.assign(box.style, {
+                position: 'fixed',
+                top: '20px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: '#fff3cd',
+                color: '#5c4400',
+                padding: '15px 25px',
+                borderRadius: '10px',
+                fontSize: '15px',
+                fontFamily: 'Segoe UI, sans-serif',
+                fontWeight: '500',
+                zIndex: '99999',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                maxWidth: '90%',
+                textAlign: 'center'
+            });
+
+            box.appendChild(header);
+            box.appendChild(text);
+            box.appendChild(closeBtn);
+            document.body.appendChild(box);
+        }
+
+        function scanPrimaryBank() {
+            const primaryField = document.querySelector(CONFIG.primaryBankSelector);
+            if (!primaryField) {
+                console.log('EPB scan: primaryField NOT FOUND');
+                return null;
+            }
+
+            const rawText = primaryField.textContent.trim();
+            const upper = rawText.toUpperCase();
+            const normalized = ` ${upper.replace(/\s+/g, ' ')} `;
+
+            const isDangerous = DANGEROUS_BANKS.some(bank => normalized.includes(bank));
+
+            console.log('EPB scan:', rawText, '| dangerous =', isDangerous);
+
+            return {
+                isDangerous,
+                fullText: rawText
+            };
+        }
+
+        function checkAndWarn() {
+            const result = scanPrimaryBank();
+            if (!result) return;
+
+            const { isDangerous, fullText } = result;
+
+            if (!isDangerous) {
+                // reset tracker if bank is safe
+                lastDangerousName = null;
+                return;
+            }
+
+            const currentName = fullText;
+
+            // first ever dangerous OR changed dangerous bank name -> show popup
+            if (lastDangerousName === null || lastDangerousName !== currentName) {
+                const title = 'Probably Early Pay Bank!';
+                const items = [
+                    'This bank may show payroll one day earlier than it actually settles.',
+                    `Bank name: ${currentName}`
+                ];
+                showStyledPopup(title, items, false);
+                lastDangerousName = currentName;
+            }
+        }
+
+        function initObserver() {
+            const observer = new MutationObserver(() => {
+                setTimeout(checkAndWarn, 100);
+            });
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+        }
+
+        function init() {
+            console.log('EPB: init');
+            setTimeout(checkAndWarn, 800);
+            initObserver();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    })();
+}
 
 
 /*** ============ CRM Status Cleaner (module) — Support ============ ***/
