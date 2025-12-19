@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.54
+// @version      2.55
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -18,12 +18,12 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.54";
+    const CURRENT_VERSION = "2.55";
 
 const changelog = [
-  "✅ Loyalty Point Calc - Triggers only when all remarks are added",
-  "✅ Loyalty Point Calc - Triggers for loans that are Refinance only",
-  "✅ Loyalty Point Calc - Notes read/written strictly by last loanid (*loan that is higher on the page)"
+
+  " Added — Minor tweak that reads schedule from Change pending loan details page, and appends the day/dates to the Payment Schedule button ",
+   " Also Lms Assistant Module was changed to the  version from Sales script. It has some different functionality, but I don't remember what exactly. Enjoy using it! "
 ];
 
 
@@ -455,9 +455,68 @@ if (MODULES.lmsAssistant) {
         return time > callHours.start && time < callHours.end;
     }
 
+    function makePhoneClickable(phoneEl) {
+        if (!phoneEl || phoneEl.dataset.briaLinked) return null;
+
+        const rawNumber = phoneEl.textContent.trim();
+        const sanitizedNumber = rawNumber.replace(/[^\d]/g, '');
+        if (sanitizedNumber.length < 7) return null;
+
+        const span = document.createElement('span');
+        span.textContent = rawNumber;
+        span.title = 'Click to call via Bria';
+        span.style.cursor = 'pointer';
+        span.style.display = 'inline';
+        span.style.textDecoration = 'underline';
+        span.style.textUnderlineOffset = '2px';
+        span.style.transition = 'opacity 0.2s ease, text-decoration-color 0.2s ease';
+        span.style.textDecorationColor = 'inherit';
+        span.className = phoneEl.className;
+
+        span.onmouseover = () => {
+            span.style.opacity = '0.8';
+            span.style.textDecorationColor = '#28a745';
+        };
+        span.onmouseout = () => {
+            span.style.opacity = '1';
+            span.style.textDecorationColor = 'inherit';
+        };
+
+        span.onclick = () => {
+            const number = `sip:211${sanitizedNumber}`;
+            const isFirstTime = !localStorage.getItem('briaConfirmed');
+
+            if (isFirstTime) {
+                localStorage.setItem('briaConfirmed', 'true');
+                window.open(number, '_blank');
+                alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
+            } else {
+                const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
+                if (popup) {
+                    popup.document.write(`
+                        <html>
+                            <head><title></title></head>
+                            <body>
+                                <script>
+                                    setTimeout(() => { location.href = "${number}"; }, 100);
+                                    setTimeout(() => { window.close(); }, 2000);
+                                <\/script>
+                            </body>
+                        </html>
+                    `);
+                } else {
+                    alert("The pop-up has been blocked. Please allow it in your browser.");
+                }
+            }
+        };
+
+        phoneEl.replaceWith(span);
+        span.dataset.briaLinked = 'true';
+        return span;
+    }
+
     function showStyledPopup(title, items, noIcon = false) {
         const box = document.createElement("div");
-
         const header = document.createElement("h3");
         header.innerHTML = noIcon ? `${title}` : `<span style="color: red;">📌</span> ${title}`;
         header.style.marginBottom = "10px";
@@ -469,42 +528,84 @@ if (MODULES.lmsAssistant) {
         const closeBtn = document.createElement("button");
         closeBtn.textContent = "OK";
         Object.assign(closeBtn.style, {
-            marginTop: "10px",
-            padding: "4px 12px",
-            border: "1px solid #a27c33",
-            borderRadius: "4px",
-            background: "#5c4400",
-            backgroundImage: "url(Images/global-button-back.png)",
-            backgroundRepeat: "repeat-x",
-            color: "#fff",
-            fontWeight: "bold",
-            cursor: "pointer",
-            fontFamily: "Arial, Helvetica, sans-serif"
+            marginTop: "10px", padding: "4px 12px", border: "1px solid #a27c33", borderRadius: "4px",
+            background: "#5c4400", backgroundImage: "url(Images/global-button-back.png)", backgroundRepeat: "repeat-x",
+            color: "#fff", fontWeight: "bold", cursor: "pointer", fontFamily: "Arial, Helvetica, sans-serif"
         });
         closeBtn.onclick = () => box.remove();
 
         Object.assign(box.style, {
-            position: "fixed",
-            top: "20px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            backgroundColor: "#fff3cd",
-            color: "#5c4400",
-            padding: "15px 25px",
-            borderRadius: "10px",
-            fontSize: "15px",
-            fontFamily: "Segoe UI, sans-serif",
-            fontWeight: "500",
-            zIndex: "99999",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-            maxWidth: "90%",
-            textAlign: "center"
+            position: "fixed", top: "20px", left: "50%", transform: "translateX(-50%)",
+            backgroundColor: "#fff3cd", color: "#5c4400", padding: "15px 25px", borderRadius: "10px",
+            fontSize: "15px", fontFamily: "Segoe UI, sans-serif", fontWeight: "500", zIndex: "99999",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)", maxWidth: "90%", textAlign: "center"
         });
 
         box.appendChild(header);
         box.appendChild(text);
         box.appendChild(closeBtn);
         document.body.appendChild(box);
+    }
+
+    // NEW: append payment schedule details to link for current loan
+    async function appendPaymentScheduleDetails(loanId) {
+        try {
+            const endpoint =
+                `https://apply.creditcube.com/plm.net/customers/EditPendingLoan.aspx` +
+                `?loanid=${encodeURIComponent(loanId)}&storeid=1&loantypeid=2`;
+
+            const resp = await fetch(endpoint, {
+                method: 'GET',
+                credentials: 'include'
+            });
+            const htmlText = await resp.text();
+
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html'); // [web:46][web:49]
+
+            const freqTypeSelect = doc.querySelector('#maincontent_Loan_PaymentScheduleFrequencyType');
+            if (!freqTypeSelect) return;
+
+            const freqValue = freqTypeSelect.value; // 1=Weekly, 2=Bi-weekly, 4=Twice per Month
+            let suffix = '';
+
+            if (freqValue === '2') { // Bi-weekly
+                const sel = doc.querySelector('#maincontent_Loan_FrequencyBiWeekly_Weekday');
+                if (sel) {
+                    const dayText = sel.options[sel.selectedIndex].text.trim();
+                    suffix = ` ${dayText}`;
+                }
+            } else if (freqValue === '1') { // Weekly
+                const sel = doc.querySelector('#maincontent_Loan_FrequencyWeekly_Weekday');
+                if (sel) {
+                    const dayText = sel.options[sel.selectedIndex].text.trim();
+                    suffix = ` ${dayText}`;
+                }
+            } else if (freqValue === '4') { // Twice per Month
+                const firstSel = doc.querySelector('#maincontent_Loan_FrequencyTwicePerMonth_FirstDay_DayOrdinal');
+                const secondSel = doc.querySelector('#maincontent_Loan_FrequencyTwicePerMonth_SecondDay_DayOrdinal');
+
+                if (firstSel && secondSel) {
+                    const firstText = firstSel.options[firstSel.selectedIndex].text.trim().toUpperCase();
+                    const secondText = secondSel.options[secondSel.selectedIndex].text.trim().toUpperCase();
+                    suffix = ` ${firstText} AND ${secondText}`;
+                }
+            }
+
+            if (!suffix) return;
+
+            const psLink = document.querySelector(
+                `#loan_${loanId} > table.ProfileLoanBottom > tbody > tr > td:nth-child(2) > a:nth-child(1)`
+            );
+            if (!psLink) return;
+
+            const baseText = psLink.textContent.trim();
+            if (!baseText.includes(suffix.trim())) {
+                psLink.textContent = baseText + suffix;
+            }
+        } catch (e) {
+            console.error('Error while fetching Payment Schedule:', e);
+        }
     }
 
     if (location.href.includes('CustomerDetails.aspx?')) {
@@ -514,8 +615,20 @@ if (MODULES.lmsAssistant) {
             const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
             const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
             const homePhone = document.querySelector('#ctl00_Span_HomePhone strong');
+            const sendBtn = document.querySelector('input[id^="ctl00_LoansRepeater_Btn_DoLetterActionSend_"]');
+            const statusElem = document.querySelector('#ctl00_LoansRepeater_Span_Loan_Status_0');
+            const container = statusElem?.closest('td');
+            const headerDiv = document.querySelector("div.Header");
+            const profileTable = document.querySelector("table.ProfileProperties");
 
-            if (!custCell || !cellPhone || !homePhone) return;
+            if (!custCell || !cellPhone || !homePhone || !sendBtn || !headerDiv || !profileTable) return;
+
+            // detect current loan id from header
+            const headerMatch = headerDiv.textContent.match(/Loan#\s*(\d+)/i);
+            const currentLoanId = headerMatch ? headerMatch[1] : null;
+            if (currentLoanId) {
+                appendPaymentScheduleDetails(currentLoanId); // <- NEW CALL
+            }
 
             const custState = custCell.textContent.trim().substring(0, 2);
             const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
@@ -524,9 +637,98 @@ if (MODULES.lmsAssistant) {
             }
 
             [cellPhone, homePhone].forEach(phone => {
-                phone.style.fontWeight = '800';
-                phone.style.color = isCallable(custState) ? 'green' : 'red';
+                const span = makePhoneClickable(phone);
+                if (span) {
+                    span.style.fontWeight = '800';
+                    span.style.color = isCallable(custState) ? 'green' : 'red';
+                }
             });
+
+            const followUps = Array.from(document.querySelectorAll(".tr-followup td.td1")).map(td => td.innerText.trim());
+            if (followUps.length > 0) {
+                showStyledPopup("Follow-Up Reminder", followUps);
+            }
+
+            const notesButton = document.querySelector('#ctl00_LoansRepeater_NotesLink_0');
+            const containerId = document.querySelector('#LastLoanSection [id^="loan_"]')?.id;
+            if (!notesButton || !containerId) return;
+
+            const notesSpan = notesButton.parentElement;
+            const statusText = container?.innerText || '';
+
+            if (statusText.includes("AA Call In Progress") && !document.getElementById("cancelVoiceBtn")) {
+                const [, loanId] = containerId.split('_');
+
+                const cancelBtn = document.createElement("input");
+                cancelBtn.type = "button";
+                cancelBtn.id = "cancelVoiceBtn";
+                cancelBtn.value = "Cancel Voice Bot Call";
+                Object.assign(cancelBtn.style, {
+                    marginRight: "6px", padding: "4px 8px", fontSize: "12px", fontWeight: "bold",
+                    fontFamily: "Arial, Helvetica, sans-serif", background: "#f33", color: "#fff",
+                    border: "1px solid #a00", cursor: "pointer"
+                });
+
+                cancelBtn.onclick = function () {
+                    if (!confirm("Are you sure you want to cancel voice bot call?")) return;
+
+                    if (!document.getElementById('loader-style')) {
+                        const style = document.createElement('style');
+                        style.id = 'loader-style';
+                        style.innerHTML = `
+                            .loader-container {
+                                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                                background-color: rgba(255,255,255,0.7); display: flex;
+                                justify-content: center; align-items: center; z-index: 9999;
+                            }
+                            .loader {
+                                border: 5px solid #f3f3f3; border-top: 5px solid #3498db;
+                                border-radius: 50%; width: 50px; height: 50px;
+                                animation: spin 2s linear infinite;
+                            }
+                            @keyframes spin {
+                                0% { transform: rotate(0deg); }
+                                100% { transform: rotate(360deg); }
+                            }`;
+                        document.head.appendChild(style);
+                    }
+
+                    const loaderContainer = document.createElement("div");
+                    loaderContainer.className = "loader-container";
+                    loaderContainer.id = "page-loader";
+                    const loader = document.createElement("div");
+                    loader.className = "loader";
+                    loaderContainer.appendChild(loader);
+                    document.body.appendChild(loaderContainer);
+
+                    const domain = "https://ibv.creditsense.ai";
+                    const width = 600, height = 400;
+                    const left = (screen.width - width) / 2;
+                    const top = (screen.height - height) / 2;
+
+                    const newWindow = window.open(
+                        `${domain}/cancel-voice-bot-call?layout=embedded&loanId=${loanId}`,
+                        'newWindow',
+                        `width=${width},height=${height},left=${left},top=${top},location=no`
+                    );
+
+                    const timer = setInterval(() => {
+                        if (newWindow.closed) {
+                            clearInterval(timer);
+                            location.reload();
+                        }
+                    }, 100);
+
+                    const listener = function (event) {
+                        if (event.origin !== domain) return;
+                        window.removeEventListener("message", listener);
+                        newWindow.close();
+                    };
+                    window.addEventListener("message", listener);
+                };
+
+                notesSpan.before(cancelBtn);
+            }
 
             observer.disconnect();
         });
