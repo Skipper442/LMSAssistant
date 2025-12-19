@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.23
+// @version      2.24
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -19,12 +19,13 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.23";
+    const CURRENT_VERSION = "2.24";
 
  const changelog = [
 
-  " Added — Early Pay Bank module checker "
+  " Added — Minor tweak that reads schedule from Change pending loan details page, and appends the day/dates to the Payment Schedule button "
 ];
+
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -458,34 +459,32 @@ if (MODULES.lmsAssistant) {
         };
 
         span.onclick = () => {
-    const number = `sip:211${sanitizedNumber}`;
+            const number = `sip:211${sanitizedNumber}`;
+            const isFirstTime = !localStorage.getItem('briaConfirmed');
 
-    const isFirstTime = !localStorage.getItem('briaConfirmed');
-
-    if (isFirstTime) {
-        localStorage.setItem('briaConfirmed', 'true');
-        window.open(number, '_blank'); 
-        alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
-    } else {
-        const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
-        if (popup) {
-            popup.document.write(`
-                <html>
-                    <head><title></title></head>
-                    <body>
-                        <script>
-                            setTimeout(() => { location.href = "${number}"; }, 100);
-                            setTimeout(() => { window.close(); }, 2000);
-                        <\/script>
-                    </body>
-                </html>
-            `);
-        } else {
-            alert("The pop-up has been blocked. Please allow it in your browser.");
-        }
-    }
-};
-
+            if (isFirstTime) {
+                localStorage.setItem('briaConfirmed', 'true');
+                window.open(number, '_blank');
+                alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
+            } else {
+                const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
+                if (popup) {
+                    popup.document.write(`
+                        <html>
+                            <head><title></title></head>
+                            <body>
+                                <script>
+                                    setTimeout(() => { location.href = "${number}"; }, 100);
+                                    setTimeout(() => { window.close(); }, 2000);
+                                <\/script>
+                            </body>
+                        </html>
+                    `);
+                } else {
+                    alert("The pop-up has been blocked. Please allow it in your browser.");
+                }
+            }
+        };
 
         phoneEl.replaceWith(span);
         span.dataset.briaLinked = 'true';
@@ -524,6 +523,67 @@ if (MODULES.lmsAssistant) {
         document.body.appendChild(box);
     }
 
+    // NEW: append payment schedule details to link for current loan
+    async function appendPaymentScheduleDetails(loanId) {
+        try {
+            const endpoint =
+                `https://apply.creditcube.com/plm.net/customers/EditPendingLoan.aspx` +
+                `?loanid=${encodeURIComponent(loanId)}&storeid=1&loantypeid=2`;
+
+            const resp = await fetch(endpoint, {
+                method: 'GET',
+                credentials: 'include'
+            });
+            const htmlText = await resp.text();
+
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html'); // [web:46][web:49]
+
+            const freqTypeSelect = doc.querySelector('#maincontent_Loan_PaymentScheduleFrequencyType');
+            if (!freqTypeSelect) return;
+
+            const freqValue = freqTypeSelect.value; // 1=Weekly, 2=Bi-weekly, 4=Twice per Month
+            let suffix = '';
+
+            if (freqValue === '2') { // Bi-weekly
+                const sel = doc.querySelector('#maincontent_Loan_FrequencyBiWeekly_Weekday');
+                if (sel) {
+                    const dayText = sel.options[sel.selectedIndex].text.trim();
+                    suffix = ` ${dayText}`;
+                }
+            } else if (freqValue === '1') { // Weekly
+                const sel = doc.querySelector('#maincontent_Loan_FrequencyWeekly_Weekday');
+                if (sel) {
+                    const dayText = sel.options[sel.selectedIndex].text.trim();
+                    suffix = ` ${dayText}`;
+                }
+            } else if (freqValue === '4') { // Twice per Month
+                const firstSel = doc.querySelector('#maincontent_Loan_FrequencyTwicePerMonth_FirstDay_DayOrdinal');
+                const secondSel = doc.querySelector('#maincontent_Loan_FrequencyTwicePerMonth_SecondDay_DayOrdinal');
+
+                if (firstSel && secondSel) {
+                    const firstText = firstSel.options[firstSel.selectedIndex].text.trim().toUpperCase();
+                    const secondText = secondSel.options[secondSel.selectedIndex].text.trim().toUpperCase();
+                    suffix = ` ${firstText} AND ${secondText}`;
+                }
+            }
+
+            if (!suffix) return;
+
+            const psLink = document.querySelector(
+                `#loan_${loanId} > table.ProfileLoanBottom > tbody > tr > td:nth-child(2) > a:nth-child(1)`
+            );
+            if (!psLink) return;
+
+            const baseText = psLink.textContent.trim();
+            if (!baseText.includes(suffix.trim())) {
+                psLink.textContent = baseText + suffix;
+            }
+        } catch (e) {
+            console.error('Error while fetching Payment Schedule:', e);
+        }
+    }
+
     if (location.href.includes('CustomerDetails.aspx?')) {
         togglepin();
 
@@ -538,6 +598,13 @@ if (MODULES.lmsAssistant) {
             const profileTable = document.querySelector("table.ProfileProperties");
 
             if (!custCell || !cellPhone || !homePhone || !sendBtn || !headerDiv || !profileTable) return;
+
+            // detect current loan id from header
+            const headerMatch = headerDiv.textContent.match(/Loan#\s*(\d+)/i);
+            const currentLoanId = headerMatch ? headerMatch[1] : null;
+            if (currentLoanId) {
+                appendPaymentScheduleDetails(currentLoanId); // <- NEW CALL
+            }
 
             const custState = custCell.textContent.trim().substring(0, 2);
             const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
@@ -655,6 +722,7 @@ if (MODULES.lmsAssistant) {
         });
     }
 }
+
 
 
     /*** ============ Email/TXT Category Filter ============ ***/
