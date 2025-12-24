@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      2
+// @version      2.1
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
+// @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
 // @grant        none
@@ -13,28 +14,105 @@
 (function () {
     'use strict';
 
+// ===== Version Changelog Popup =====
+    const CURRENT_VERSION = "2.1";
+
+const changelog = [
+    "Added — New Call button on Customer Details (next to History) for one-click calling via softphone",
+    "Removed — Copy/Paste module that only copied the phone number to clipboard"
+];
+
+
+
+
+    const savedVersion = localStorage.getItem("lms_assistant_version");
+    if (savedVersion !== CURRENT_VERSION) {
+        showVersionPopup(CURRENT_VERSION, changelog);
+        localStorage.setItem("lms_assistant_version", CURRENT_VERSION);
+    }
+
+    function showVersionPopup(version, changes) {
+        const box = document.createElement("div");
+
+        const header = document.createElement("h3");
+        header.textContent = `🛠 LMS Assistant PRO — updated to version ${version}`;
+        header.style.marginBottom = "10px";
+
+        const list = document.createElement("ul");
+        list.style.textAlign = "left";
+        changes.forEach(change => {
+            const li = document.createElement("li");
+            li.textContent = change;
+            list.appendChild(li);
+        });
+
+        const closeBtn = document.createElement("button");
+        closeBtn.textContent = "OK";
+        Object.assign(closeBtn.style, {
+            marginTop: "15px",
+            padding: "6px 14px",
+            border: "1px solid #a27c33",
+            borderRadius: "4px",
+            background: "#5c4400",
+            backgroundImage: "url(Images/global-button-back.png)",
+            backgroundRepeat: "repeat-x",
+            color: "#fff",
+            fontWeight: "bold",
+            cursor: "pointer",
+            fontFamily: "Arial, Helvetica, sans-serif"
+        });
+        closeBtn.onclick = () => box.remove();
+
+        Object.assign(box.style, {
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#fff3cd",
+            color: "#5c4400",
+            padding: "20px 30px",
+            borderRadius: "10px",
+            fontSize: "14px",
+            fontFamily: "Segoe UI, sans-serif",
+            fontWeight: "500",
+            zIndex: "99999",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            maxWidth: "90%",
+            textAlign: "center"
+        });
+
+        box.appendChild(header);
+        box.appendChild(list);
+        box.appendChild(closeBtn);
+        document.body.appendChild(box);
+    }
+
+    // ===== End Version Check =====
+
     const MODULES = {
         lmsAssistant: true, // Hidden but always on
         emailFilter: true,
-        copyPaste: true,
         qcSearch: true,
-        notifications: true
+        notifications: true,
+        briaCall: true
     };
 
     const MODULE_LABELS = {
         emailFilter: 'Email Filter',
-        copyPaste: 'Copy/Paste',
         qcSearch: 'QC Search',
-        notifications: 'Notifications BETA'
+        notifications: 'Notifications BETA',
+        briaCall: 'Bria Call'
     };
 
     const MODULE_DESCRIPTIONS = {
         lmsAssistant: "Highlights states, manages call hours",
         emailFilter: "Filters the list of email templates",
-        copyPaste: "Adds phone copy button",
         qcSearch: "QC Search — quick phone-based lookup",
-        notifications: "Enables sound and notifications for the tab"
+        notifications: "Enables sound and notifications for the tab",
+        briaCall: "Adds Call via Bria button on CustomerDetails"
     };
+
+
 
     Object.keys(MODULES).forEach(key => {
         const saved = localStorage.getItem(`lms_module_${key}`);
@@ -219,6 +297,7 @@
     }
 
     injectTopMenuPanel();
+
 /*** ============ LMS Assistant ============ ***/
 if (MODULES.lmsAssistant) {
     const callHours = { start: '08:00:00', end: '20:00:00' };
@@ -478,69 +557,74 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
     const observer = new MutationObserver(waitForSendButton);
     observer.observe(document.body, { childList: true, subtree: true });
 }
-/*** ============ Copy/Paste LMS (Stable with Observer) ============ ***/
 
-if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
-    function isUSPhoneNumber(str) {
-        return /^\(?(\d{3})\)?[- .]?(\d{3})[- .]?(\d{4})$/.test(str);
+/*** ============ LMS Bria Call Button (CustomerDetails) ============ ***/
+
+if (MODULES.briaCall && location.href.includes('CustomerDetails')) {
+    function extractCellPhone() {
+        const cellPhoneEl = document.querySelector('#ctl00_Span_CellPhone strong');
+        if (!cellPhoneEl) return null;
+
+        const rawNumber = cellPhoneEl.textContent.trim();
+        const sanitizedNumber = rawNumber.replace(/[^\d]/g, '');
+        if (sanitizedNumber.length < 7) return null;
+
+        return `sip:111${sanitizedNumber}`;
     }
 
-    function displayUSPhoneNumbers() {
-        const text = document.body.innerText;
-        const matches = text.match(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g);
-        if (!matches) {
-            alert("No phone numbers found on this page.");
-            return;
-        }
+    function createCallButton(historyLink) {
+        if (document.getElementById("briaCallBtn")) return;
 
-        const usPhoneNumbers = matches.filter(isUSPhoneNumber);
-        if (usPhoneNumbers.length === 0) {
-            alert("No US phone numbers found on this page.");
-        } else {
-            const phoneNumber = "111" + usPhoneNumbers[Math.min(1, usPhoneNumbers.length - 1)];
-            navigator.clipboard.writeText(phoneNumber)
-                .then(() => console.log("Copied: " + phoneNumber))
-                .catch(err => console.error("Failed to copy:", err));
-        }
-    }
+        const button = document.createElement("a");
+        button.id = "briaCallBtn";
+        button.className = "WordOnButton";
+        button.href = "javascript:void(0);";
 
-    function createCopyButton() {
-        if (document.getElementById("copyLmsBtn")) return;
-
-        const button = document.createElement("button");
-        button.id = "copyLmsBtn";
-        button.innerHTML = "Copy Cell Number";
+        button.innerHTML =
+            '<span style="margin-right:4px;vertical-align:middle;color:transparent;text-shadow:0 0 0 #28a745;">&#128222;</span>' +
+            '<span style="vertical-align:middle;">Call</span>';
 
         Object.assign(button.style, {
-            position: "fixed",
-            bottom: "20px",
-            right: "20px",
-            zIndex: "9999",
-            padding: "6px 12px",
-            background: "#2e9fd8",
-            color: "#fff",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
             fontWeight: "bold",
-            fontFamily: "Arial, Helvetica, sans-serif"
+            whiteSpace: "nowrap",
+            margin: "0 0 0 3px"
         });
 
-        button.onclick = displayUSPhoneNumbers;
-        document.body.appendChild(button);
+        button.onclick = () => {
+            const sipUri = extractCellPhone();
+            if (!sipUri) {
+                alert("Cell phone number not found or invalid.");
+                return;
+            }
+
+            const isFirstTime = !localStorage.getItem('briaConfirmed');
+            if (isFirstTime) {
+                localStorage.setItem('briaConfirmed', 'true');
+                window.open(sipUri, '_blank'); // напряму відкриваємо sip: посилання [web:178]
+                alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
+            } else {
+                // повторні виклики — теж просто відкриваємо sip: в новій вкладці
+                window.open(sipUri, '_blank');
+            }
+        };
+
+        historyLink.insertAdjacentElement('beforebegin', button);
     }
 
-    // Стежимо за появою тіла сторінки та кнопки "Send"
     const observer = new MutationObserver(() => {
-        const targetReady = document.querySelector('#ctl00_Span_CellPhone') || document.querySelector('#ContactSection');
-        if (targetReady) {
-            createCopyButton();
-            observer.disconnect(); // лише один раз
+        const cellPhone = document.querySelector('#ctl00_Span_CellPhone strong');
+        const historyLink = document.querySelector('#maincontent_HistoryLink');
+
+        if (cellPhone && historyLink) {
+            createCallButton(historyLink);
+            observer.disconnect();
         }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true }); //[web:181]
 }
+
+
 
 /*** ============ QC LMS Search Assistant ============ ***/
 
