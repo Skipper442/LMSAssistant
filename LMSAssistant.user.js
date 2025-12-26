@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.46
+// @version      1.47
 // @description  LMS Assistant PRO with Back Office modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -20,11 +20,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.46";
+    const CURRENT_VERSION = "1.47";
 
  const changelog = [
   
-  'Added — Overpaid module checker'
+  'Added — Ability to hide the sidebar with menu topics '
  
 ];
 
@@ -413,6 +413,105 @@ if (MODULES.lmsAssistant) {
         'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
     };
 
+    // ==== ЛОГІКА ЛІВОГО МЕНЮ (toggle) ====
+
+    const MENU_STORAGE_KEY = 'cc_left_menu_hidden'; // "true"/"false"
+
+    function readMenuHidden() {
+        const v = localStorage.getItem(MENU_STORAGE_KEY);
+        return v === 'true';
+    }
+
+    function writeMenuHidden(val) {
+        localStorage.setItem(MENU_STORAGE_KEY, val ? 'true' : 'false');
+    }
+
+    function applyMenuState(hidden, nav, main, btn) {
+        const table = nav.closest('table');
+
+        if (hidden) {
+            nav.style.display = 'none';
+            main.colSpan = 2;
+            main.classList.add('expanded-main');
+
+            if (table) {
+                table.style.width = '100%';
+                table.style.maxWidth = '100%';
+                table.style.marginLeft = '0';
+                table.style.marginRight = '0';
+            }
+
+            btn.textContent = '≫';
+        } else {
+            nav.style.display = 'table-cell';
+            main.colSpan = 1;
+            main.classList.remove('expanded-main');
+
+            if (table) {
+                table.style.width = '';
+                table.style.maxWidth = '';
+                table.style.marginLeft = '';
+                table.style.marginRight = '';
+            }
+
+            btn.textContent = '≪';
+        }
+    }
+
+    function initLeftMenuToggle() {
+        const nav = document.querySelector('#ctl00 > table > tbody > tr > td.PageNavigation');
+        const main = document.querySelector('#ctl00 > table > tbody > tr > td.PageGradeRight');
+        if (!nav || !main) return;
+
+        // стилі додаємо один раз
+        if (!document.querySelector('#cc-left-menu-toggle-style')) {
+            const style = document.createElement('style');
+            style.id = 'cc-left-menu-toggle-style';
+            style.textContent = `
+                td.PageGradeRight {
+                    transition: width 0.2s ease;
+                }
+                td.PageGradeRight.expanded-main {
+                    width: 100%;
+                }
+                #nav-toggle-btn {
+                    position: fixed;
+                    top: 50%;
+                    left: 0;
+                    transform: translateY(-50%);
+                    z-index: 9999;
+                    padding: 4px 6px;
+                    background: #333;
+                    color: #fff;
+                    cursor: pointer;
+                    font-size: 12px;
+                    border-radius: 0 4px 4px 0;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // уникаємо дублювання кнопки
+        let btn = document.querySelector('#nav-toggle-btn');
+        if (!btn) {
+            btn = document.createElement('div');
+            btn.id = 'nav-toggle-btn';
+            document.body.appendChild(btn);
+        }
+
+        let hidden = readMenuHidden();
+
+        applyMenuState(hidden, nav, main, btn);
+
+        btn.onclick = () => {
+            hidden = !hidden;
+            applyMenuState(hidden, nav, main, btn);
+            writeMenuHidden(hidden);
+        };
+    }
+
+    // ====== Далі існуючий функціонал Bria / попапів / репортів ======
+
     function getLocalTime(state) {
         const currTime = new Date();
         return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
@@ -451,34 +550,33 @@ if (MODULES.lmsAssistant) {
         };
 
         span.onclick = () => {
-    const number = `sip:211${sanitizedNumber}`;
+            const number = `sip:211${sanitizedNumber}`;
 
-    const isFirstTime = !localStorage.getItem('briaConfirmed');
+            const isFirstTime = !localStorage.getItem('briaConfirmed');
 
-    if (isFirstTime) {
-        localStorage.setItem('briaConfirmed', 'true');
-        window.open(number, '_blank');
-        alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
-    } else {
-        const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
-        if (popup) {
-            popup.document.write(`
-                <html>
-                    <head><title></title></head>
-                    <body>
-                        <script>
-                            setTimeout(() => { location.href = "${number}"; }, 100);
-                            setTimeout(() => { window.close(); }, 2000);
-                        <\/script>
-                    </body>
-                </html>
-            `);
-        } else {
-            alert("The pop-up has been blocked. Please allow it in your browser.");
-        }
-    }
-};
-
+            if (isFirstTime) {
+                localStorage.setItem('briaConfirmed', 'true');
+                window.open(number, '_blank');
+                alert("✅ Please allow Bria to open and check 'Always allow'.\n\nNext time, call will be automatic.");
+            } else {
+                const popup = window.open('', '_blank', 'width=1,height=1,left=9999,top=9999');
+                if (popup) {
+                    popup.document.write(`
+                        <html>
+                            <head><title></title></head>
+                            <body>
+                                <script>
+                                    setTimeout(() => { location.href = "${number}"; }, 100);
+                                    setTimeout(() => { window.close(); }, 2000);
+                                <\/script>
+                            </body>
+                        </html>
+                    `);
+                } else {
+                    alert("The pop-up has been blocked. Please allow it in your browser.");
+                }
+            }
+        };
 
         phoneEl.replaceWith(span);
         span.dataset.briaLinked = 'true';
@@ -519,6 +617,9 @@ if (MODULES.lmsAssistant) {
 
     if (location.href.includes('CustomerDetails.aspx?')) {
         togglepin();
+
+        // ініціалізація toggle лівого меню на сторінці клієнта
+        initLeftMenuToggle();
 
         const observer = new MutationObserver(() => {
             const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
