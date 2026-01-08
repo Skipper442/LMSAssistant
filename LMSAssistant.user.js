@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.56
+// @version      2.57
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -18,11 +18,11 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.56";
+    const CURRENT_VERSION = "2.57";
 
 const changelog = [
 
- " FIXED - Max Exposure Module "
+ " One more thing - Added ability to hide the side menu on the сustomer page (Migrated from Backoffice script) "
 ];
 
 
@@ -506,7 +506,7 @@ if (MODULES.lmsAssistant) {
         document.body.appendChild(box);
     }
 
-    // Payment Schedule helper: read schedule from EditPendingLoan and append to link
+    // Payment Schedule helper:
     async function appendPaymentScheduleDetails(loanId) {
         try {
             const endpoint =
@@ -515,32 +515,32 @@ if (MODULES.lmsAssistant) {
 
             const resp = await fetch(endpoint, {
                 method: 'GET',
-                credentials: 'include' // keep cookies/session [web:56][web:104]
+                credentials: 'include'
             });
             const htmlText = await resp.text();
 
             const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlText, 'text/html');// [web:49][web:46]
+            const doc = parser.parseFromString(htmlText, 'text/html');
 
             const freqTypeSelect = doc.querySelector('#maincontent_Loan_PaymentScheduleFrequencyType');
             if (!freqTypeSelect) return;
 
-            const freqValue = freqTypeSelect.value; // 1=Weekly, 2=Bi-weekly, 4=Twice per Month
+            const freqValue = freqTypeSelect.value;
             let suffix = '';
 
-            if (freqValue === '2') { // Bi-weekly
+            if (freqValue === '2') {
                 const sel = doc.querySelector('#maincontent_Loan_FrequencyBiWeekly_Weekday');
                 if (sel) {
                     const dayText = sel.options[sel.selectedIndex].text.trim();
                     suffix = ` ${dayText}`;
                 }
-            } else if (freqValue === '1') { // Weekly
+            } else if (freqValue === '1') {
                 const sel = doc.querySelector('#maincontent_Loan_FrequencyWeekly_Weekday');
                 if (sel) {
                     const dayText = sel.options[sel.selectedIndex].text.trim();
                     suffix = ` ${dayText}`;
                 }
-            } else if (freqValue === '4') { // Twice per Month
+            } else if (freqValue === '4') {
                 const firstSel = doc.querySelector('#maincontent_Loan_FrequencyTwicePerMonth_FirstDay_DayOrdinal');
                 const secondSel = doc.querySelector('#maincontent_Loan_FrequencyTwicePerMonth_SecondDay_DayOrdinal');
 
@@ -567,8 +567,103 @@ if (MODULES.lmsAssistant) {
         }
     }
 
+    // ==== (toggle) ====
+    const MENU_STORAGE_KEY = 'cc_left_menu_hidden';
+
+    function readMenuHidden() {
+        const v = localStorage.getItem(MENU_STORAGE_KEY);
+        return v === 'true';
+    }
+
+    function writeMenuHidden(val) {
+        localStorage.setItem(MENU_STORAGE_KEY, val ? 'true' : 'false');
+    }
+
+    function applyMenuState(hidden, nav, main, btn) {
+        const table = nav.closest('table');
+
+        if (hidden) {
+            nav.style.display = 'none';
+            main.colSpan = 2;
+            main.classList.add('expanded-main');
+
+            if (table) {
+                table.style.width = '100%';
+                table.style.maxWidth = '100%';
+                table.style.marginLeft = '0';
+                table.style.marginRight = '0';
+            }
+
+            btn.textContent = '≫';
+        } else {
+            nav.style.display = 'table-cell';
+            main.colSpan = 1;
+            main.classList.remove('expanded-main');
+
+            if (table) {
+                table.style.width = '';
+                table.style.maxWidth = '';
+                table.style.marginLeft = '';
+                table.style.marginRight = '';
+            }
+
+            btn.textContent = '≪';
+        }
+    }
+
+    function initLeftMenuToggle() {
+        const nav = document.querySelector('#ctl00 > table > tbody > tr > td.PageNavigation');
+        const main = document.querySelector('#ctl00 > table > tbody > tr > td.PageGradeRight');
+        if (!nav || !main) return;
+
+        if (!document.querySelector('#cc-left-menu-toggle-style')) {
+            const style = document.createElement('style');
+            style.id = 'cc-left-menu-toggle-style';
+            style.textContent = `
+                td.PageGradeRight {
+                    transition: width 0.2s ease;
+                }
+                td.PageGradeRight.expanded-main {
+                    width: 100%;
+                }
+                #nav-toggle-btn {
+                    position: fixed;
+                    top: 50%;
+                    left: 0;
+                    transform: translateY(-50%);
+                    z-index: 9999;
+                    padding: 4px 6px;
+                    background: #333;
+                    color: #fff;
+                    cursor: pointer;
+                    font-size: 12px;
+                    border-radius: 0 4px 4px 0;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        let btn = document.querySelector('#nav-toggle-btn');
+        if (!btn) {
+            btn = document.createElement('div');
+            btn.id = 'nav-toggle-btn';
+            document.body.appendChild(btn);
+        }
+
+        let hidden = readMenuHidden();
+        applyMenuState(hidden, nav, main, btn);
+
+        btn.onclick = () => {
+            hidden = !hidden;
+            applyMenuState(hidden, nav, main, btn);
+            writeMenuHidden(hidden);
+        };
+    }
+
+    // Основна логіка
     if (location.href.includes('CustomerDetails.aspx?')) {
         togglepin();
+        initLeftMenuToggle();
 
         const observer = new MutationObserver(() => {
             const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
@@ -589,7 +684,6 @@ if (MODULES.lmsAssistant) {
                 phone.style.color = isCallable(custState) ? 'green' : 'red';
             });
 
-            // detect current loan id from header "Loan# 7227..."
             const headerMatch = headerDiv.textContent.match(/Loan#\s*(\d+)/i);
             if (headerMatch) {
                 appendPaymentScheduleDetails(headerMatch[1]);
