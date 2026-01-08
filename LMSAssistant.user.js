@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.47
+// @version      1.48
 // @description  LMS Assistant PRO with Back Office modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -20,11 +20,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.47";
+    const CURRENT_VERSION = "1.48";
 
  const changelog = [
   
-  'Added — Ability to hide the sidebar with menu topics '
+  'Fixed — Max Exposure Module '
  
 ];
 
@@ -1555,7 +1555,7 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
 
 })();
 
-/*** ============ Max Exposure (always rightmost among left actions) ============ ***/
+/*** ============ Max Exposure ============ ***/
 
 if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
   const API_URL = 'https://api.creditsense.ai/';
@@ -1592,12 +1592,22 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
   const BADGE_WARN= { color:'#b00020', bg:'#ffe9e9', border:'#ffc7c7' };
 
   const QUERY = `
-    query MaxExposureQuery($customerId: ID!) {
+    query MaxExposureQuery($customerId: String!) {
       creditExposure(customerId: $customerId) { allowedAmount }
     }`;
 
   const safeJson = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
-  const getCustomerIdFromUrl = () => (location.href.match(/[?&]customerid=(\d+)/i) || [])[1] || '';
+
+
+  const getCustomerIdFromUrl = () => {
+    const idElement = document.querySelector('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
+    if (idElement) {
+      const text = (idElement.textContent || idElement.innerText || '').trim();
+      const id = text.match(/(\d{5,})/)?.[1];
+      return String(id || '');
+    }
+    return '';
+  };
 
   function gql(variables) {
     return new Promise((resolve, reject) => {
@@ -1617,31 +1627,24 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
     });
   }
 
-
   function getButtonsRow() {
-
     let a = document.querySelector('#ctl00_LoansRepeater_Btn_ChangePendingDetails_0');
     if (a && a.parentElement) return a.parentElement;
-
 
     a = document.querySelector('#ctl00_LoansRepeater_Btn_ReviewAndUpdateCustomerInfo_0');
     if (a && a.parentElement) return a.parentElement;
 
-
     a = document.querySelector('#ctl00_LoansRepeater_Btn_Preview_0, #ctl00_LoansRepeater_Btn_Send_0');
     if (a && a.parentElement) return a.parentElement;
 
-
     a = document.querySelector('#ctl00_LoansRepeater_Btn_ExpressLoan_0');
     if (a && a.parentElement) return a.parentElement;
-
 
     const tdWithButtons = Array.from(document.querySelectorAll('td')).find(td =>
       td.querySelector('input[type="button"]')
     );
     return tdWithButtons || null;
   }
-
 
   function getOrCreateControls(row) {
     let btn = row.querySelector('a[data-mx-btn="1"]');
@@ -1671,11 +1674,9 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
     return { btn, badge };
   }
 
-
   function placeAtRowEnd(row, btn, badge) {
     const rightBlocks = Array.from(row.querySelectorAll('span[style*="float: right"]'));
     const insertBeforeNode = rightBlocks.length ? rightBlocks[0] : null;
-
 
     if (insertBeforeNode) {
       if (badge.nextSibling !== insertBeforeNode) row.insertBefore(badge, insertBeforeNode);
@@ -1710,6 +1711,7 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
         applyBadgeTheme(badge, BADGE_ERR);
         return;
       }
+
       badge.style.display = 'inline-block';
       badge.textContent = '…';
       badge.style.color = '#0070f3';
@@ -1727,7 +1729,8 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
           badge.textContent = '—';
           applyBadgeTheme(badge, BADGE_ERR);
         }
-      } catch {
+      } catch (err) {
+        console.error('API Error:', err);
         badge.textContent = 'Error';
         applyBadgeTheme(badge, BADGE_ERR);
       }
