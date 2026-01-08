@@ -15,11 +15,11 @@
     'use strict';
 
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.1";
+    const CURRENT_VERSION = "2.11";
 
 const changelog = [
-    "Added — New Call button on Customer Details (next to History) for one-click calling via softphone",
-    "Removed — Copy/Paste module that only copied the phone number to clipboard"
+    
+   "Added - ability to hide the side menu on the сustomer page"
 ];
 
 
@@ -379,8 +379,103 @@ if (MODULES.lmsAssistant) {
         document.body.appendChild(box);
     }
 
+    // ==== ЛОГІКА ЛІВОГО МЕНЮ (toggle) ====
+    const MENU_STORAGE_KEY = 'cc_left_menu_hidden';
+
+    function readMenuHidden() {
+        const v = localStorage.getItem(MENU_STORAGE_KEY);
+        return v === 'true';
+    }
+
+    function writeMenuHidden(val) {
+        localStorage.setItem(MENU_STORAGE_KEY, val ? 'true' : 'false');
+    }
+
+    function applyMenuState(hidden, nav, main, btn) {
+        const table = nav.closest('table');
+
+        if (hidden) {
+            nav.style.display = 'none';
+            main.colSpan = 2;
+            main.classList.add('expanded-main');
+
+            if (table) {
+                table.style.width = '100%';
+                table.style.maxWidth = '100%';
+                table.style.marginLeft = '0';
+                table.style.marginRight = '0';
+            }
+
+            btn.textContent = '≫';
+        } else {
+            nav.style.display = 'table-cell';
+            main.colSpan = 1;
+            main.classList.remove('expanded-main');
+
+            if (table) {
+                table.style.width = '';
+                table.style.maxWidth = '';
+                table.style.marginLeft = '';
+                table.style.marginRight = '';
+            }
+
+            btn.textContent = '≪';
+        }
+    }
+
+    function initLeftMenuToggle() {
+        const nav = document.querySelector('#ctl00 > table > tbody > tr > td.PageNavigation');
+        const main = document.querySelector('#ctl00 > table > tbody > tr > td.PageGradeRight');
+        if (!nav || !main) return;
+
+        if (!document.querySelector('#cc-left-menu-toggle-style')) {
+            const style = document.createElement('style');
+            style.id = 'cc-left-menu-toggle-style';
+            style.textContent = `
+                td.PageGradeRight {
+                    transition: width 0.2s ease;
+                }
+                td.PageGradeRight.expanded-main {
+                    width: 100%;
+                }
+                #nav-toggle-btn {
+                    position: fixed;
+                    top: 50%;
+                    left: 0;
+                    transform: translateY(-50%);
+                    z-index: 9999;
+                    padding: 4px 6px;
+                    background: #333;
+                    color: #fff;
+                    cursor: pointer;
+                    font-size: 12px;
+                    border-radius: 0 4px 4px 0;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        let btn = document.querySelector('#nav-toggle-btn');
+        if (!btn) {
+            btn = document.createElement('div');
+            btn.id = 'nav-toggle-btn';
+            document.body.appendChild(btn);
+        }
+
+        let hidden = readMenuHidden();
+        applyMenuState(hidden, nav, main, btn);
+
+        btn.onclick = () => {
+            hidden = !hidden;
+            applyMenuState(hidden, nav, main, btn);
+            writeMenuHidden(hidden);
+        };
+    }
+
+    // Основна логіка
     if (location.href.includes('CustomerDetails.aspx?')) {
         togglepin();
+        initLeftMenuToggle();// ✅ Додано toggle меню
 
         const observer = new MutationObserver((mutations, obs) => {
             const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
@@ -401,7 +496,7 @@ if (MODULES.lmsAssistant) {
                     phone.style.color = isCallable(custState) ? 'green' : 'red';
                 });
 
-                obs.disconnect(); // stop observing
+                obs.disconnect();
             }
         });
 
