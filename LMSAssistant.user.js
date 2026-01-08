@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.24
+// @version      2.25
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -19,11 +19,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.24";
+    const CURRENT_VERSION = "2.25";
 
  const changelog = [
 
-  " Added — Minor tweak that reads schedule from Change pending loan details page, and appends the day/dates to the Payment Schedule button "
+  " FIXED — Max Excposure module "
 ];
 
 
@@ -904,7 +904,7 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
     const waitForIBVButton = () => {
         const jsonBtn = document.querySelector('input[value="Show JSON"]');
 
-        // Yodlee 
+        // Yodlee
         const yodleeSelect = document.getElementById('maincontent_ReportBarControl_YodleeIbvReports');
         if (jsonBtn && yodleeSelect && !document.getElementById('openInCrpBtn')) {
             const btn = createButton(async () => {
@@ -1164,11 +1164,11 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
     observerDL?.disconnect?.();
   };
 
-  
+
   if (MODULES.copyPaste) startCopyPaste();
 
-  
- 
+
+
   if (typeof window.onModuleToggle === 'function') {
     const prev = window.onModuleToggle;
     window.onModuleToggle = function(name, enabled) {
@@ -1179,11 +1179,11 @@ if (MODULES.ibvButton && location.href.includes('CustomerDetails')) {
       }
     };
   } else {
-    
+
     document.addEventListener('click', (e) => {
       const t = e.target.closest('[data-module-name="copyPaste"],[data-name="copyPaste"]');
       if (!t) return;
-      
+
       setTimeout(() => {
         if (MODULES.copyPaste) startCopyPaste(); else stopCopyPaste();
       }, 0);
@@ -1526,12 +1526,22 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
   const BADGE_WARN= { color:'#b00020', bg:'#ffe9e9', border:'#ffc7c7' };
 
   const QUERY = `
-    query MaxExposureQuery($customerId: ID!) {
+    query MaxExposureQuery($customerId: String!) {
       creditExposure(customerId: $customerId) { allowedAmount }
     }`;
 
   const safeJson = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
-  const getCustomerIdFromUrl = () => (location.href.match(/[?&]customerid=(\d+)/i) || [])[1] || '';
+
+
+  const getCustomerIdFromUrl = () => {
+    const idElement = document.querySelector('#mainpropertiesview > table:nth-child(3) > tbody > tr > td > table > tbody > tr:nth-child(1) > td:nth-child(4)');
+    if (idElement) {
+      const text = (idElement.textContent || idElement.innerText || '').trim();
+      const id = text.match(/(\d{5,})/)?.[1];
+      return String(id || '');
+    }
+    return '';
+  };
 
   function gql(variables) {
     return new Promise((resolve, reject) => {
@@ -1551,31 +1561,24 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
     });
   }
 
-
   function getButtonsRow() {
-
     let a = document.querySelector('#ctl00_LoansRepeater_Btn_ChangePendingDetails_0');
     if (a && a.parentElement) return a.parentElement;
-
 
     a = document.querySelector('#ctl00_LoansRepeater_Btn_ReviewAndUpdateCustomerInfo_0');
     if (a && a.parentElement) return a.parentElement;
 
-
     a = document.querySelector('#ctl00_LoansRepeater_Btn_Preview_0, #ctl00_LoansRepeater_Btn_Send_0');
     if (a && a.parentElement) return a.parentElement;
 
-
     a = document.querySelector('#ctl00_LoansRepeater_Btn_ExpressLoan_0');
     if (a && a.parentElement) return a.parentElement;
-
 
     const tdWithButtons = Array.from(document.querySelectorAll('td')).find(td =>
       td.querySelector('input[type="button"]')
     );
     return tdWithButtons || null;
   }
-
 
   function getOrCreateControls(row) {
     let btn = row.querySelector('a[data-mx-btn="1"]');
@@ -1605,11 +1608,9 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
     return { btn, badge };
   }
 
-
   function placeAtRowEnd(row, btn, badge) {
     const rightBlocks = Array.from(row.querySelectorAll('span[style*="float: right"]'));
     const insertBeforeNode = rightBlocks.length ? rightBlocks[0] : null;
-
 
     if (insertBeforeNode) {
       if (badge.nextSibling !== insertBeforeNode) row.insertBefore(badge, insertBeforeNode);
@@ -1644,6 +1645,7 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
         applyBadgeTheme(badge, BADGE_ERR);
         return;
       }
+
       badge.style.display = 'inline-block';
       badge.textContent = '…';
       badge.style.color = '#0070f3';
@@ -1661,7 +1663,8 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
           badge.textContent = '—';
           applyBadgeTheme(badge, BADGE_ERR);
         }
-      } catch {
+      } catch (err) {
+        console.error('API Error:', err);
         badge.textContent = 'Error';
         applyBadgeTheme(badge, BADGE_ERR);
       }
@@ -1690,6 +1693,108 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
   })();
 }
 
+
+
+/*** ============ Overpaid check module ============ ***/
+
+if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
+    'use strict';
+const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
+    // Перевіряємо, чи є статус "Gold", "Platinum", "VIP" або "Diamond"
+    const statusCells = document.querySelectorAll(statusColumnSelector);
+    let eligibleStatusFound = false;
+    statusCells.forEach(statusCell => {
+        const status = statusCell.textContent.trim();
+        const allowedStatuses = ["Gold", "Platinum", "VIP", "Diamond"];
+        if (allowedStatuses.includes(status)) {
+            eligibleStatusFound = true;
+        }
+    });
+
+    if (eligibleStatusFound) {
+        // Функція для парсингу суми
+        const extractAmount = (element) => {
+            return parseFloat(element.textContent.trim().replace('$', '').replace(',', ''));
+        };
+
+        // Показуємо відсоток поруч із Total Paid
+        const displayPercentage = (percentage, payments, status) => {
+            const percentageElement = document.createElement('span');
+            percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
+            percentageElement.classList.add('loan-comparison-tooltip');
+
+            if (percentage > 10) {
+                if (payments < 3 && !status.includes("Paid in Full")) {
+                    percentageElement.style.color = '#de9d1b';
+                    percentageElement.title = "Not enough payments made for potential refinancing.";
+                } else if (status.includes("Active") && status.includes("In-House Collections")) {
+                    percentageElement.style.color = 'red';
+                    percentageElement.title = "Last active loan is in collections.";
+                } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
+                    percentageElement.style.color = 'red';
+                    percentageElement.title = "Customer is in collection.";
+                } else {
+                    percentageElement.style.color = 'green';
+                    percentageElement.title = "Might be eligible, check with TL.";
+                }
+                percentageElement.style.fontWeight = '900';
+            } else {
+                percentageElement.style.color = 'red';
+                percentageElement.style.fontWeight = 'bold';
+            }
+
+            const totalPaidElement = document.querySelector(totalPaidSelector);
+            totalPaidElement.appendChild(percentageElement);
+        };
+
+        const calculatePercentage = (totalPaid, totalPrincipalLoaned) => {
+            return ((totalPaid - totalPrincipalLoaned) / totalPrincipalLoaned) * 100;
+        };
+
+
+        const totalPrincipalLoanedSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(2)';
+        const totalPaidSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(4)';
+
+
+        const loanStatusCells = document.querySelectorAll('.DataTable.LoansTbl tbody tr td:nth-child(3)');
+        let lastEligibleRowIndex = -1;
+        loanStatusCells.forEach((statusCell, index) => {
+            const status = statusCell.textContent.trim();
+            if (status.includes("Active") || status.includes("Paid in Full")) {
+                lastEligibleRowIndex = index;
+            } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
+                lastEligibleRowIndex = index;
+            }
+        });
+
+        if (lastEligibleRowIndex !== -1) {
+            const totalPrincipalLoanedElement = document.querySelector(totalPrincipalLoanedSelector);
+            const totalPaidElement = document.querySelector(totalPaidSelector);
+            if (totalPrincipalLoanedElement && totalPaidElement) {
+                const totalPrincipalLoaned = extractAmount(totalPrincipalLoanedElement);
+                const totalPaid = extractAmount(totalPaidElement);
+
+                // Останній рядок із потрібним статусом
+                const allRows = document.querySelectorAll('.DataTable.LoansTbl tbody tr');
+                const lastEligibleRow = allRows[lastEligibleRowIndex];
+
+                const paymentsElement = lastEligibleRow.querySelector('td:nth-child(11)');
+                const payments = parseInt(paymentsElement.textContent.trim());
+
+                const status = lastEligibleRow.querySelector('td:nth-child(3)').textContent.trim();
+                const percentage = calculatePercentage(totalPaid, totalPrincipalLoaned);
+
+                displayPercentage(percentage, payments, status);
+            } else {
+                console.error('One or more elements not found.');
+            }
+        } else {
+            console.log('No clients with eligible statuses found.');
+        }
+    } else {
+        console.log('No clients with eligible statuses found.');
+    }
+}
 /*** ============ Overpaid check module ============ ***/
 
 if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
@@ -1974,7 +2079,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
   const COMPACT_ID = 'crmStatusCompactList';
   const TOGGLER_ID = 'crmBackOfficeToggle';
 
-  
+
   let working = false;
   let domObserver = null;
 
@@ -2031,7 +2136,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
     return res;
   }
 
-  
+
   function buildList(container, title, items, scopeEl) {
     container.innerHTML = '';
     const t = document.createElement('div');
@@ -2054,7 +2159,7 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
       lb.addEventListener('click', () => cb.click());
 
       cb.addEventListener('change', () => {
-        it.input.click(); 
+        it.input.click();
         cb.checked = it.input.checked;
       });
 
@@ -2147,5 +2252,5 @@ if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
     setupObserver(getMode);
   })();
 }
-    
+
 })();
