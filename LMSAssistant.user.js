@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.57
+// @version      2.58
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -18,11 +18,11 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.57";
+    const CURRENT_VERSION = "2.58";
 
 const changelog = [
 
- " One more thing - Added ability to hide the side menu on the сustomer page (Migrated from Backoffice script) "
+ " Added - DFCU to early pay checker "
 ];
 
 
@@ -1871,6 +1871,7 @@ if (MODULES.earlyPayBank && location.href.includes('CustomerDetails.aspx')) {
             ' CU ',
             ' FCU',
             'C U',
+            ' DFCU',
             'C/U'
         ];
 
