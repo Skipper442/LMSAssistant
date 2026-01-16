@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.25
+// @version      2.26
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -19,11 +19,11 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.25";
+    const CURRENT_VERSION = "2.26";
 
  const changelog = [
 
-  " FIXED — Max Excposure module "
+  " Added — DFCU for early pay module "
 ];
 
 
@@ -1912,6 +1912,7 @@ if (MODULES.earlyPayBank && location.href.includes('CustomerDetails.aspx')) {
             ' CU ',
             ' FCU',
             'C U',
+            ' DFCU',
             'C/U'
         ];
 
