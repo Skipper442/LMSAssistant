@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.58
+// @version      2.59
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -18,13 +18,12 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.58";
+    const CURRENT_VERSION = "2.59";
 
 const changelog = [
 
- " Added - DFCU to early pay checker "
+ " Added - Bank Account Matcher module (parses Account number matches from ALGO notes) "
 ];
-
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -104,7 +103,8 @@ const MODULES = {
     maxExposure: true,
     crmStatusCleaner: true,
     loyaltyRefi: true,
-    earlyPayBank: true
+    earlyPayBank: true,
+    algoAccountMatcher: true
 };
 
 const MODULE_LABELS = {
@@ -121,10 +121,9 @@ const MODULE_LABELS = {
     maxExposure: 'Max Exposure',
     crmStatusCleaner: 'Loan Status Cleaner',
     loyaltyRefi: 'Loyalty Points Calc',
-    earlyPayBank: 'Early Pay Bank'
+    earlyPayBank: 'Early Pay Bank',
+    algoAccountMatcher: 'Account Number Matcher'
 };
-
-
 
 const MODULE_DESCRIPTIONS = {
     lmsAssistant: "Highlights states, manages call hours",
@@ -140,7 +139,8 @@ const MODULE_DESCRIPTIONS = {
     maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
     crmStatusCleaner: 'Reduces the list of loan statuses',
     loyaltyRefi: 'Tracks refinance, adjusts loyalty points',
-    earlyPayBank: "Warns when customer’s primary bank is probably an early pay bank"
+    earlyPayBank: "Warns when customer’s primary bank is probably an early pay bank",
+    algoAccountMatcher: "Parses ALGO notes, shows Account number matches status"
 };
 
 
@@ -1994,6 +1994,157 @@ if (MODULES.earlyPayBank && location.href.includes('CustomerDetails.aspx')) {
         function init() {
             console.log('EPB: init');
             setTimeout(checkAndWarn, 800);
+            initObserver();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    })();
+}
+
+/*** ============= ALGO Account Matcher ============ ***/
+if (MODULES.algoAccountMatcher && location.href.includes('CustomerDetails.aspx')) {
+    (function () {
+        'use strict';
+
+        let lastALGOStatus = null;
+
+        async function getNotesHtml(loanId) {
+            try {
+                const response = await fetch(`/plm.net/customers/CustomerNotes.aspx?loanid=${loanId}&isnosection=true`, {
+                    credentials: 'include'
+                });
+                return await response.text();
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function parseAccountData(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const table = doc.querySelector('#Form_Notes table.DataTable');
+
+            if (!table) return { status: null, date: null };
+
+            const rows = table.querySelectorAll('tbody tr');
+            for (const row of rows) {
+                const cells = row.querySelectorAll('td');
+                if (cells.length >= 3) {
+                    const cellTexts = Array.from(cells).map(cell => cell.textContent.trim());
+                    const statusIndex = cellTexts.findIndex(text => /Account number matches:/i.test(text));
+
+                    if (statusIndex !== -1) {
+                        const statusMatch = cellTexts[statusIndex].match(/Account number matches:\s*(Yes|No|Partial)/i);
+                        const status = statusMatch ? statusMatch[1] : null;
+                        const date = statusIndex >= 2 ? cellTexts[statusIndex - 2] : null;
+                        return { status, date };
+                    }
+                }
+            }
+
+            return { status: null, date: null };
+        }
+
+        function showPopup(loanId, status, date) {
+            const oldPopup = document.getElementById('notes-account-popup');
+            if (oldPopup) oldPopup.remove();
+
+            const popup = document.createElement('div');
+            popup.id = 'notes-account-popup';
+            popup.style.cssText = `
+                position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+                width: 300px; background: #ffffff;
+                border: 2px solid ${status === 'Yes' ? '#28a745' : status === 'No' ? '#dc3545' : '#ffc107'};
+                border-radius: 8px; padding: 16px 20px; z-index: 99999; box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 14px; color: #333;
+            `;
+
+            const borderColor = status === 'Yes' ? '#28a745' : status === 'No' ? '#dc3545' : '#ffc107';
+            const textColor = status === 'Yes' ? '#28a745' : status === 'No' ? '#dc3545' : '#d39e00';
+
+            popup.innerHTML = `
+                <div style="text-align: center; margin-bottom: 12px;">
+                    <div style="font-size: 16px; font-weight: 600; color: #333; margin-bottom: 4px;">
+                        Loan #${loanId}
+                    </div>
+                    <div style="font-size: 13px; color: #666; margin-bottom: 8px;">
+                        Account number matches
+                    </div>
+                    <div style="font-size: 28px; font-weight: 700; color: ${textColor}; margin-bottom: 8px;">
+                        ${status}
+                    </div>
+                    <div style="font-size: 12px; color: #666; line-height: 1.3;">
+                        Fetched for ALGO created on: ${date || 'N/A'}
+                    </div>
+                </div>
+                <div style="text-align: center;">
+                    <button id="notes-popup-ok" style="
+                        background: ${borderColor}; color: #ffffff; border: none;
+                        padding: 8px 20px; border-radius: 5px; font-weight: 500;
+                        font-size: 13px; cursor: pointer; text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+                    " onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                        OK
+                    </button>
+                </div>
+            `;
+
+            document.body.appendChild(popup);
+
+            document.getElementById('notes-popup-ok').onclick = function() {
+                popup.remove();
+            };
+        }
+
+        function extractLoanId() {
+            const headerElements = document.querySelectorAll('.Header');
+            for (const header of headerElements) {
+                const match = header.textContent.match(/Loan#?\s*(\d{6,8})/i);
+                if (match) return match[1];
+            }
+
+            const loanContainer = document.querySelector('[id^="loan_"]');
+            if (loanContainer) {
+                const headerInContainer = loanContainer.querySelector('.Header');
+                if (headerInContainer) {
+                    const match = headerInContainer.textContent.match(/Loan#?\s*(\d{6,8})/i);
+                    if (match) return match[1];
+                }
+            }
+
+            const urlMatch = location.search.match(/loanid=(\d+)/);
+            return urlMatch ? urlMatch[1] : null;
+        }
+
+        function checkAndShowALGO() {
+            const loanId = extractLoanId();
+            if (!loanId) return;
+
+            getNotesHtml(loanId).then((html) => {
+                const data = parseAccountData(html);
+                if (data.status && data.status !== lastALGOStatus) {
+                    showPopup(loanId, data.status, data.date);
+                    lastALGOStatus = data.status;
+                }
+            });
+        }
+
+        function initObserver() {
+            const observer = new MutationObserver(() => {
+                setTimeout(checkAndShowALGO, 100);
+            });
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true
+            });
+        }
+
+        function init() {
+            setTimeout(checkAndShowALGO, 300);
             initObserver();
         }
 
