@@ -1,13 +1,20 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.2
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/Collections/LMSAssistant.user.js
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        GM_setClipboard
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @connect      docs.google.com
+// @connect      sheets.googleapis.com
+// @connect      slack.com
+// @connect      googleusercontent.com
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -15,14 +22,12 @@
     'use strict';
 
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.11";
+    const CURRENT_VERSION = "2.2";
 
 const changelog = [
-    
-   "Added - ability to hide the side menu on the сustomer page"
+ " NEW - Slack DM module (One click opens a chat with the agent you need) "
+
 ];
-
-
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -94,14 +99,16 @@ const changelog = [
         emailFilter: true,
         qcSearch: true,
         notifications: true,
-        briaCall: true
+        briaCall: true,
+        slackDM: true
     };
 
     const MODULE_LABELS = {
         emailFilter: 'Email Filter',
         qcSearch: 'QC Search',
         notifications: 'Notifications BETA',
-        briaCall: 'Bria Call'
+        briaCall: 'Bria Call',
+        slackDM: 'Slack DM'
     };
 
     const MODULE_DESCRIPTIONS = {
@@ -109,7 +116,8 @@ const changelog = [
         emailFilter: "Filters the list of email templates",
         qcSearch: "QC Search — quick phone-based lookup",
         notifications: "Enables sound and notifications for the tab",
-        briaCall: "Adds Call via Bria button on CustomerDetails"
+        briaCall: "Adds Call via Bria button on CustomerDetails",
+        slackDM: '💬 1:1 Slack DM from LMS'
     };
 
 
@@ -788,6 +796,106 @@ if (MODULES.briaCall && location.href.includes('CustomerDetails')) {
     const element = getElement('#maincontent_Td_CityHeader');
     if (element) element.textContent = 'Quick Search';
 }
+
+/*** ============ Slack DM Module ============ ***/
+
+if (MODULES.slackDM && location.href.includes('CustomerDetails.aspx')) {
+    let slackObserver = null;
+    let AGENT_USER_MAP = GM_getValue('SHEET_AGENTS', {});
+
+    const TEAM_ID = 'TT4QBEM0T';
+    const SLACK_TOKEN = 'xoxp-922827497027-2403145227153-10394105603025-e1863a99d85301ea3839a3a5c4037e5f';
+    const SHEET_URLS = ['https://docs.google.com/spreadsheets/d/e/2PACX-1vQMzbtzYHjCmo_88jwlbaBElVhzd2tBPzcdZ90ZaILyNZniwg4J5YwZNMCyIXalCYcY4_xmTCtGVMxV/pub?gid=0&single=true&output=csv'];
+
+    async function loadAgents() {
+        for (const url of SHEET_URLS) {
+            try {
+                const csv = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET', url, timeout: 5000,
+                        onload: r => resolve(r.responseText),
+                        onerror: reject, ontimeout: reject
+                    });
+                });
+                if (csv.includes('Name') || csv.includes('name')) {
+                    const map = parseCSV(csv);
+                    if (Object.keys(map).length > 0) {
+                        GM_setValue('SHEET_AGENTS', map);
+                        AGENT_USER_MAP = map;
+                        scanCells();
+                        return;
+                    }
+                }
+            } catch(e) {}
+        }
+        scanCells();
+    }
+
+    function parseCSV(csv) {
+        const map = {};
+        csv.split('\n').slice(1).forEach(line => {
+            const [name, userId] = line.split(',');
+            if (name && userId?.startsWith('U0')) {
+                map[name.trim().replace(/"/g, '')] = userId.trim().replace(/"/g, '');
+            }
+        });
+        return map;
+    }
+
+    async function openDm(userId) {
+        const ch = await new Promise(r => GM_xmlhttpRequest({
+            method: 'POST', url: 'https://slack.com/api/conversations.open',
+            headers: {'Authorization': `Bearer ${SLACK_TOKEN}`, 'Content-Type': 'application/x-www-form-urlencoded'},
+            data: `users=${userId}`, onload: r2 => r(JSON.parse(r2.responseText).ok ? JSON.parse(r2.responseText).channel.id : null)
+        }));
+        const uri = ch ? `slack://channel?team=${TEAM_ID}&id=${ch}` : `slack://user?team=${TEAM_ID}&id=${userId}`;
+        window.open(uri, '_blank');
+    }
+
+    function scanCells() {
+        document.querySelectorAll(
+            'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(4) td:nth-child(4), ' +
+            'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(5) td:nth-child(4), ' +
+            'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(6) td:nth-child(4)'
+        ).forEach(cell => {
+            if (cell.dataset.dm) return;
+            const name = cell.textContent.trim();
+            const userId = AGENT_USER_MAP[name];
+            if (userId) {
+                const icon = document.createElement('span');
+                icon.innerHTML = `<img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAEBAQEBAQEBAQEBAQEBAQIBAQEBAQIBAQECAgICAgICAgIDAwQDAwMDAwICAwQDAwQEBAQEAgMFBQQEBQQEBAT/2wBDAQEBAQEBAQIBAQIEAwIDBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAT/wAARCAAwADADASIAAhEBAxEB/8QAGgABAQEAAwEAAAAAAAAAAAAAAAkIBAUHCv/EACkQAAAGAQQCAgICAwAAAAAAAAECAwQFBgcACBITCREUIhUhFiMYMkH/xAAYAQADAQEAAAAAAAAAAAAAAAAEBQcGAP/EACsRAAEDBAEDAgUFAAAAAAAAAAECAxEEBQYSBwATISJBCAkUMVEVFyQyQv/aAAwDAQACEQMRAD8A+/jTTTXdd001PLKu9WxY43PwmEv4IxWqa8rDQ8nOPFlyTb4ZgrYwPGAgYEepAXXASGKYTnbqBzTH/XzHDvkYn8mbyZbbm7x/DR9MXss9UqzPtni42ZFeDSfri6fAYwoHTcFjlQBJIhTJCsT+xQCj7eX7HbtjdNb6u7thLda2HWSFBWyDETqTqYIJBgiR7zEda554zev7mMorVfWIrf08pLTo/kzrrJTGm3o3/rPmdfV1VvTTTSPqxdNTp3wZO3Q0KYpjbB8bOo1Z7FqrzM9W6enbXij/ALjlBo47G65UCFSKmoQQKUVBUU+w8PQUW1D3yx7cPITne84dHaVbLG0xs1h1Yu3QFWymTGJoiXO7UMMzJiZ03F23+KdFNMqXeqiLdfil7W+7/GL7TY3eWrvV0DdYhEgtOiUKkESQQRKZkSCJ9vcFUfDzXPD/AO2r+ZJxZNQCs3NS+2GeyO7ptu35d17YHdb2mNjOquBifK28665cx6zulTmrlEq2NozmCXHDke0Yso47hMXiwyH49M7YEk+ahVCqF9HKX9H98DeF4UwlnPHvkBu+QX2LLYjCUGwX6+qTr+Cdo1WQbrxc+MWKD8CdSwO1HTUiZEjCcew31Dgfjj3cfuS3M4m8q+N8Uxebr02reLbXi3FyNYi7M+b0eVaOYSrBNFcxYqdDgH6r58dU65DKG7SfYOpLhZzIuPd0NpyRdHNWsUrZ45Sbcuo01ZyazbtGrIy5wapAz+aQ6HWTgQSGIHoxR/ZvfIZj8S3Pb1pbtVzx3DHKhe6mgxb0SRA3K1pQ2T+EjVv87KHpHS67fLNr+PqHEL3m/JS601iWb1TP1MykQyUMKL61H7FpZUHYnZCUDy4e68eua94+WbXkr/IiuzTakN41N/XJeeoJaIaNkTOCFCMYADdEXCPQdU5xU7VExRR5Kf2/aqOsTbUKFn6nydoXyu+l06+6j00YuInLMSxuTvO0phco8FlQSKVMDkN7EonE5P0PD2G2dB8bZVcs0xGmyG7Wqotz7hWDT1SSl5OqykEghKtVAbJ2SkkH7RBI9swN7jWkTiNRf1XlbRKjVrVsV7nfWdl+ETqBuuIif8hppprd9H9Qv3BeIm05m8hkFu6YZVr0Vjt1cave7lVnke6NckHNZQi23wo0SkFsdJ2SIREV1lCGRM4U9JLAUoG39jzazN0fPkrlX+XNFa6tIykmxiWySpJV3+SBcPjPPYAl1pC45gYomE5kCDxJ/wA2lprEZVx3imZ3K03a/sFb9tqBU06gtaNXUwQSEkbJlKSUqkEpAPiQa/kPOvJWUWO345eq1K6SiohQMp7TY1pkgJCSQkFSglKU7klUJHnaSWmmmtv1IOv/2Q==" width="16" height="16" style="vertical-align:middle;cursor:pointer;opacity:.8;transition:opacity .15s ease,transform .15s ease;margin-left:4px;border:1px solid rgba(0,0,0,.15);border-radius:4px;box-shadow:0 1px 2px rgba(0,0,0,.1);">`;
+                icon.title = 'DM in Slack';
+                icon.onclick = function(e) {
+                    e.stopPropagation();
+                    openDm(userId);
+                };
+                icon.onmouseenter = function() {
+                    const img = icon.querySelector('img');
+                    img.style.opacity = '1';
+                    img.style.transform = 'scale(1.1)';
+                    img.style.boxShadow = '0 2px 4px rgba(0,0,0,.2)';
+                };
+                icon.onmouseleave = function() {
+                    const img = icon.querySelector('img');
+                    img.style.opacity = '.8';
+                    img.style.transform = 'scale(1)';
+                    img.style.boxShadow = '0 1px 2px rgba(0,0,0,.1)';
+                };
+                cell.appendChild(icon);
+                cell.dataset.dm = '1';
+            }
+        });
+    }
+
+
+    slackObserver = new MutationObserver(scanCells);
+    slackObserver.observe(document.body, { childList: true, subtree: true });
+    loadAgents();
+    setInterval(loadAgents, 3600000); // 1 година
+}
+
+
+
 
 /*** ============ Notifications module ============ ***/
 
