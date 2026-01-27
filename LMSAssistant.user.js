@@ -26,7 +26,7 @@
 
 const changelog = [
     " NEW - Slack DM module (One click opens a chat with the agent you need), ",
-    " ⚠️  IMPORTANT: Slack connction token must be added separately to the Module script code (just once)",
+    " ⚠️  IMPORTANT: Slack connection token must be added separately to the Module script code (just once)",
 ];
 
 
