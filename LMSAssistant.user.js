@@ -11,12 +11,15 @@
 // @grant        GM_setClipboard
 // @grant        GM_setValue
 // @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // @connect      docs.google.com
 // @connect      sheets.googleapis.com
-// @connect      slack.com
 // @connect      googleusercontent.com
+// @connect      slack.ccwusa.org
+// @connect      slack.com
 // @run-at       document-idle
 // ==/UserScript==
+
 
 (function () {
     'use strict';
@@ -25,10 +28,12 @@
     const CURRENT_VERSION = "2.3";
 
 const changelog = [
-    " NEW - Slack DM module (One click opens a chat with the agent you need), ",
-    " ⚠️  IMPORTANT: Slack connection token must be added separately to the Module script code (just once)",
+  "🆕 - Slack DM MODULE (in one click opens a your chat with the agent). - 🆕",
+  "How to use: On the first click, wait for the authorization popup (can take up to ~10 seconds).",
+  "On the next page click \"Allow\" to authorize.",
+  "After you allow access, close the confirmation page and click the Slack DM button again to open the chat.",
+  "If nothing happens: make sure Slack desktop/app is installed and you are logged into the correct workspace."
 ];
-
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -118,7 +123,7 @@ const changelog = [
         qcSearch: "QC Search — quick phone-based lookup",
         notifications: "Enables sound and notifications for the tab",
         briaCall: "Adds Call via Bria button on CustomerDetails",
-        slackDM: '💬 1:1 Slack DM from LMS'
+        slackDM: "Open 1:1 Slack DM from LMS",
     };
 
 
@@ -729,6 +734,342 @@ if (MODULES.briaCall && location.href.includes('CustomerDetails')) {
 }
 
 
+/*** ============ CC Slack DM Helper ============ ***/
+if (MODULES.slackDM && location.href.includes("CustomerDetails.aspx")) {
+
+  const CC_SLACK_DM = (() => {
+    "use strict";
+
+    const CONFIG = {
+      enabledOn: "CustomerDetails.aspx",
+
+      SHEET_URL:
+        "https://docs.google.com/spreadsheets/d/1kpeuN8hNqBG8MtO8q--Ton5sHlJjiJFrgvWqHJn-aVc/export?format=csv&gid=0",
+
+      COL_CRM_NICK: "CRM Name",
+      COL_LMS_NAME: "Name in LMS",
+      COL_SLACK_UID: "User ID (Slack)",
+
+      CRM_NICK_SELECTOR:
+        "#masterHeader > tbody > tr > td:nth-child(2) > span.LoginType",
+
+      // fallback if worker doesn't send installUrl
+      OAUTH_INSTALL_URL: "https://slack.ccwusa.org/install",
+      DM_DEEPLINK_URL: "https://slack.ccwusa.org/dm_deeplink",
+
+      CACHE_TTL_MS: 60 * 60 * 1000, // 1h
+    };
+
+    const ICON_IMG_DATA_URI =
+      'data:image/jpeg;base64,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';
+
+    // Make cache keys unique inside "big script"
+    const CACHE_KEY = "CC_SLACK_DM__CSV_DUAL_MAPS";
+    const CACHE_TS_KEY = "CC_SLACK_DM__CSV_DUAL_MAPS_TS";
+
+    function normSpaces(s) {
+      return String(s || "").replace(/\s+/g, " ").trim();
+    }
+
+    function gmGet(url, timeout = 15000) {
+      return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: "GET",
+          url,
+          timeout,
+          onload: (r) =>
+            resolve({
+              status: r.status,
+              text: r.responseText || "",
+              headers: r.responseHeaders || "",
+            }),
+          onerror: (e) => reject({ type: "network_error", e }),
+          ontimeout: () => reject({ type: "timeout" }),
+        });
+      });
+    }
+
+    function openSlackLegacy(url) {
+      window.open(url, "_blank");
+    }
+
+    function openHttp(url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+
+    function parseCSVLine(line) {
+      const cols = [];
+      let col = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') inQuotes = !inQuotes;
+        else if (ch === "," && !inQuotes) {
+          cols.push(col);
+          col = "";
+        } else col += ch;
+      }
+      cols.push(col);
+
+      return cols.map((c) => String(c || "").trim().replace(/^"|"$/g, ""));
+    }
+
+    function buildDualMaps(csv) {
+      const lines = String(csv || "")
+        .split(/\r?\n/)
+        .filter((l) => l.trim().length);
+
+      if (!lines.length) throw new Error("CSV empty");
+
+      const header = parseCSVLine(lines[0]);
+
+      const idxCrm = header.indexOf(CONFIG.COL_CRM_NICK);
+      const idxLms = header.indexOf(CONFIG.COL_LMS_NAME);
+      const idxSlack = header.indexOf(CONFIG.COL_SLACK_UID);
+
+      if (idxCrm === -1 || idxLms === -1 || idxSlack === -1) {
+        throw new Error(
+          `CSV header mismatch. Need "${CONFIG.COL_CRM_NICK}", "${CONFIG.COL_LMS_NAME}", "${CONFIG.COL_SLACK_UID}". Got: ${header.join(" | ")}`
+        );
+      }
+
+      const mapByCrmNick = Object.create(null);
+      const mapByLmsName = Object.create(null);
+
+      for (const line of lines.slice(1)) {
+        const cols = parseCSVLine(line);
+        const crmNick = (cols[idxCrm] || "").trim();
+        const lmsName = (cols[idxLms] || "").trim();
+        const slackUid = (cols[idxSlack] || "").trim();
+
+        if (crmNick && slackUid) mapByCrmNick[crmNick] = slackUid;
+        if (lmsName && slackUid) mapByLmsName[lmsName] = slackUid;
+      }
+
+      return { mapByCrmNick, mapByLmsName };
+    }
+
+    function getCrmNick() {
+      const el = document.querySelector(CONFIG.CRM_NICK_SELECTOR);
+      if (!el) return null;
+
+      const raw = normSpaces(el.textContent || "");
+      if (!raw) return null;
+
+      return normSpaces(raw.split("|")[0]);
+    }
+
+    async function loadDualMaps(force = false) {
+      const ts = GM_getValue(CACHE_TS_KEY, 0);
+      const cached = GM_getValue(CACHE_KEY, null);
+
+      if (!force && cached && Date.now() - ts < CONFIG.CACHE_TTL_MS) return cached;
+
+      const res = await gmGet(CONFIG.SHEET_URL);
+      const maps = buildDualMaps(res.text);
+
+      GM_setValue(CACHE_KEY, maps);
+      GM_setValue(CACHE_TS_KEY, Date.now());
+      return maps;
+    }
+
+    async function fetchDeeplink(crmNick, agentSlackUid) {
+      const apiUrl =
+        `${CONFIG.DM_DEEPLINK_URL}` +
+        `?login=${encodeURIComponent(crmNick)}` +
+        `&agent=${encodeURIComponent(agentSlackUid)}`;
+
+      const res = await gmGet(apiUrl, 20000);
+      const text = normSpaces(res.text);
+
+      try {
+        const j = JSON.parse(res.text);
+        return { kind: "json", status: res.status, body: j, rawText: text };
+      } catch (e) {
+        return { kind: "text", status: res.status, text };
+      }
+    }
+
+    function showAuthHelp(msg, installUrl) {
+      alert(msg);
+      openHttp(installUrl || CONFIG.OAUTH_INSTALL_URL);
+    }
+
+    let clickLock = false;
+
+    async function openDmToAgentByCellText(agentCellText) {
+      if (clickLock) return;
+      clickLock = true;
+      setTimeout(() => (clickLock = false), 700);
+
+      const crmNick = getCrmNick();
+      if (!crmNick) {
+        alert("CRM Nick not found (selector mismatch?)");
+        return;
+      }
+
+      const { mapByLmsName } = await loadDualMaps(false);
+      const agentLmsName = normSpaces(agentCellText || "");
+      const agentSlackUid = mapByLmsName[agentLmsName];
+
+      if (!agentSlackUid) {
+        alert(`No Slack UID in CSV for agent "${agentLmsName}".`);
+        return;
+      }
+
+      const resp = await fetchDeeplink(crmNick, agentSlackUid);
+
+      if (resp.kind === "json") {
+        const b = resp.body;
+
+        if (b && b.ok === true && typeof b.url === "string") {
+          if (b.type === "deeplink" && b.url.startsWith("slack://")) {
+            openSlackLegacy(b.url);
+            return;
+          }
+          if (b.type === "redirect" && b.url.startsWith("https://")) {
+            openHttp(b.url);
+            return;
+          }
+        }
+
+        if (b && b.ok === false) {
+          const message = b.message || "Slack authorization is required.";
+          const installUrl = b.installUrl || CONFIG.OAUTH_INSTALL_URL;
+
+          if (b.code === "not_authorized" || b.code === "token_revoked") {
+            showAuthHelp(message, installUrl);
+            return;
+          }
+
+          alert(message);
+          console.warn("Worker error:", b);
+          return;
+        }
+
+        alert("Unexpected response from Worker (JSON).");
+        console.warn("Worker JSON:", b);
+        return;
+      }
+
+      const link = resp.text;
+      if (link.startsWith("slack://")) return void openSlackLegacy(link);
+      if (link.startsWith("https://")) return void openHttp(link);
+
+      alert(`Unexpected response from Worker: ${link}`);
+      console.warn("Worker response:", link);
+    }
+
+    function createStyledIcon(agentName) {
+      const icon = document.createElement("span");
+      icon.innerHTML = `
+        <img src="${ICON_IMG_DATA_URI}"
+          width="16" height="16" style="
+            vertical-align: middle;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            margin-left: 4px;
+            border: 1px solid rgba(0,0,0,0.15);
+            border-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+          ">
+      `;
+
+      icon.title = "DM in Slack";
+
+      icon.addEventListener("mouseenter", () => {
+        const img = icon.querySelector("img");
+        if (!img) return;
+        img.style.opacity = "1";
+        img.style.transform = "scale(1.1)";
+        img.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+      });
+
+      icon.addEventListener("mouseleave", () => {
+        const img = icon.querySelector("img");
+        if (!img) return;
+        img.style.opacity = "0.8";
+        img.style.transform = "scale(1)";
+        img.style.boxShadow = "0 1px 2px rgba(0,0,0,0.1)";
+      });
+
+      icon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDmToAgentByCellText(agentName).catch((err) => {
+          console.error("openDmToAgentByCellText error:", err);
+          alert("Error opening DM. See console.");
+        });
+      });
+
+      return icon;
+    }
+
+    let scanScheduled = false;
+
+    async function scanCells() {
+      scanScheduled = false;
+
+      const selectors =
+        'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(4) td:nth-child(4), ' +
+        'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(5) td:nth-child(4), ' +
+        'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(6) td:nth-child(4)';
+
+      const cells = Array.from(document.querySelectorAll(selectors));
+      if (!cells.length) return;
+
+      let maps;
+      try {
+        maps = await loadDualMaps(false);
+      } catch (e) {
+        console.error("CSV load failed:", e);
+        return;
+      }
+
+      const mapByLmsName = maps.mapByLmsName || Object.create(null);
+
+      for (const cell of cells) {
+        if (cell.dataset.ccSlackDm === "1") continue;
+
+        const agentText = normSpaces(cell.textContent || "");
+        if (!agentText || agentText === "-") continue;
+
+        if (!mapByLmsName[agentText]) continue;
+
+        cell.appendChild(createStyledIcon(agentText));
+        cell.dataset.ccSlackDm = "1";
+      }
+    }
+
+    function scheduleScan() {
+      if (scanScheduled) return;
+      scanScheduled = true;
+      setTimeout(() => scanCells().catch(console.error), 80);
+    }
+
+    function start() {
+      // just in case this block is reused elsewhere
+      if (!location.href.includes(CONFIG.enabledOn)) return;
+
+      scheduleScan();
+      new MutationObserver(scheduleScan).observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    }
+
+    return {
+      start,
+      // optional debug hooks if you ever need them:
+      _loadDualMaps: loadDualMaps,
+      _getCrmNick: getCrmNick,
+    };
+  })();
+
+  CC_SLACK_DM.start();
+}
+
 
 /*** ============ QC LMS Search Assistant ============ ***/
 
@@ -798,181 +1139,6 @@ if (MODULES.briaCall && location.href.includes('CustomerDetails')) {
     if (element) element.textContent = 'Quick Search';
 }
 
-/* Slack DM Module ============ ***/
-
-if (MODULES.slackDM && location.href.includes('CustomerDetails.aspx')) {
-    console.log('Slack v6.5 PRODUCTION - OPTIMIZED');
-
-    let slackObserver = null;
-    let AGENT_USER_MAP = GM_getValue('SHEET_AGENTS', {});
-
-    const TEAM_ID = 'TT4QBEM0T';
-    const SLACK_TOKEN = 'PAST TOKEN HERE';
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kpeuN8hNqBG8MtO8q--Ton5sHlJjiJFrgvWqHJn-aVc/export?format=csv&gid=0';
-
-    async function loadAgents() {
-        try {
-            const csv = await new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: 'GET', url: SHEET_URL, timeout: 15000,
-                    onload: r => resolve(r.responseText),
-                    onerror: reject, ontimeout: reject
-                });
-            });
-
-            const map = parseCSV(csv);
-            GM_setValue('SHEET_AGENTS', map);
-            AGENT_USER_MAP = map;
-            scanCells();
-        } catch(e) {
-            console.error('Agents load error:', e);
-            setTimeout(loadAgents, 30000);
-        }
-    }
-
-    function parseCSV(csv) {
-        const map = {};
-        const lines = csv.split(/\r?\n/).filter(l => l.trim().length > 5);
-        lines.slice(1).forEach(line => {
-            let cols = parseCSVLine(line);
-            if (cols.length >= 2 && cols[1].match(/^U[A-Z0-9]+$/)) {
-                const name = cols[0].replace(/^"|"$/g, '').trim();
-                const userId = cols[1].replace(/^"|"$/g, '').trim();
-                if (name && userId) map[name] = userId;
-            }
-        });
-        return map;
-    }
-
-    function parseCSVLine(line) {
-        const cols = [];
-        let col = '';
-        let inQuotes = false;
-
-        for (let i = 0; i < line.length; i++) {
-            let ch = line[i];
-            if (ch === '"' && (i === 0 || line[i-1] !== '\\')) {
-                inQuotes = !inQuotes;
-            } else if (ch === ',' && !inQuotes) {
-                cols.push(col);
-                col = '';
-            } else {
-                col += ch;
-            }
-        }
-        cols.push(col);
-        return cols.map(c => c.trim());
-    }
-
-    function findUser(pageName) {
-        const nameTrim = pageName.trim().replace(/\s+/g, ' ');
-        if (AGENT_USER_MAP[nameTrim]) return AGENT_USER_MAP[nameTrim];
-
-        const cleanName = nameTrim.toLowerCase().replace(/collections/i, '');
-        for (const [sheetName, userId] of Object.entries(AGENT_USER_MAP)) {
-            const cleanSheet = sheetName.trim().replace(/\s+/g, ' ').toLowerCase().replace(/collections/i, '');
-            if (cleanSheet.includes(cleanName) || cleanName.includes(cleanSheet)) {
-                return userId;
-            }
-        }
-        return null;
-    }
-
-    async function openDm(userId, name) {
-        console.log(`🧑 Opening DM for ${name} (${userId})`);
-
-        if (SLACK_TOKEN && SLACK_TOKEN !== 'xoxp-НОВИЙ') {
-            try {
-                const resp = await new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
-                        method: 'POST',
-                        url: 'https://slack.com/api/conversations.open',
-                        headers: {
-                            'Authorization': `Bearer ${SLACK_TOKEN}`,
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
-                        data: `users=${userId}`,
-                        onload: r2 => {
-                            const data = JSON.parse(r2.responseText);
-                            console.log('Slack API resp:', data);
-                            resolve(data);
-                        },
-                        onerror: reject,
-                        ontimeout: reject
-                    });
-                });
-
-                if (resp.ok && resp.channel?.id) {
-                    console.log('✅ API success, opening channel');
-
-                    window.open(`slack://channel?team=${TEAM_ID}&id=${resp.channel.id}`, '_blank');
-                    return;
-                }
-            } catch(e) {
-                console.error('Slack API error:', e);
-            }
-        }
-
-        // Фолбек
-        console.log('🔄 Fallback: direct user');
-        window.open(`slack://user?team=${TEAM_ID}&id=${userId}`, '_blank');
-    }
-
-    function scanCells() {
-        const selectors = 'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(4) td:nth-child(4), ' +
-                         'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(5) td:nth-child(4), ' +
-                         'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(6) td:nth-child(4)';
-
-        document.querySelectorAll(selectors).forEach(cell => {
-            if (cell.dataset.dm === '1') return;
-
-            const name = cell.textContent.trim();
-            const userId = findUser(name);
-
-            if (userId && name !== '-') {
-                const icon = document.createElement('span');
-                icon.innerHTML = `
-                    <img src="data:image/jpeg;base64,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"
-                    width="16" height="16" style="
-                        vertical-align: middle;
-                        cursor: pointer;
-                        opacity: 0.8;
-                        transition: opacity 0.15s ease, transform 0.15s ease;
-                        margin-left: 4px;
-                        border: 1px solid rgba(0,0,0,0.15);
-                        border-radius: 4px;
-                        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    ">
-                `;
-                icon.title = `Slack Desktop DM ${name}`;
-                icon.onclick = e => {
-                    e.stopPropagation();
-                    openDm(userId, name);
-                };
-                icon.onmouseenter = () => {
-                    const img = icon.querySelector('img');
-                    img.style.opacity = '1';
-                    img.style.transform = 'scale(1.1)';
-                    img.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-                };
-                icon.onmouseleave = () => {
-                    const img = icon.querySelector('img');
-                    img.style.opacity = '0.8';
-                    img.style.transform = 'scale(1)';
-                    img.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
-                };
-
-                cell.appendChild(icon);
-                cell.dataset.dm = '1';
-            }
-        });
-    }
-
-    slackObserver = new MutationObserver(scanCells);
-    slackObserver.observe(document.body, { childList: true, subtree: true });
-    loadAgents();
-    setInterval(loadAgents, 3600000);
-}
 
 /*** ============ Notifications module ============ ***/
 
