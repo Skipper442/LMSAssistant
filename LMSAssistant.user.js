@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.59
+// @version      2.61
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -10,19 +10,30 @@
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/main/LMSAssistant.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_registerMenuCommand
 // @connect      api.creditsense.ai
+// @connect      docs.google.com
+// @connect      sheets.googleapis.com
+// @connect      googleusercontent.com
+// @connect      slack.ccwusa.org
+// @connect      slack.com
 // @run-at       document-idle
-
 // ==/UserScript==
+
 
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.59";
+    const CURRENT_VERSION = "2.61";
 
 const changelog = [
-
- " Added - Bank Account Matcher module (parses Account number matches from ALGO notes) "
+  "🆕 - Slack DM MODULE (in one click opens a your chat with the agent). - 🆕",
+  "How to use: On the first click, wait for the authorization popup (can take up to ~10 seconds).",
+  "On the next page click \"Allow\" to authorize.",
+  "After you allow access, close the confirmation page and click the Slack DM button again to open the chat.",
+  "If nothing happens: make sure Slack desktop/app is installed and you are logged into the correct workspace."
 ];
 
 
@@ -104,7 +115,8 @@ const MODULES = {
     crmStatusCleaner: true,
     loyaltyRefi: true,
     earlyPayBank: true,
-    algoAccountMatcher: true
+    algoAccountMatcher: true,
+    slackDM: true,
 };
 
 const MODULE_LABELS = {
@@ -122,7 +134,8 @@ const MODULE_LABELS = {
     crmStatusCleaner: 'Loan Status Cleaner',
     loyaltyRefi: 'Loyalty Points Calc',
     earlyPayBank: 'Early Pay Bank',
-    algoAccountMatcher: 'Account Number Matcher'
+    algoAccountMatcher: 'Account Number Matcher',
+    slackDM: 'Slack DM',
 };
 
 const MODULE_DESCRIPTIONS = {
@@ -136,12 +149,14 @@ const MODULE_DESCRIPTIONS = {
     overpaidCheck: "Checks overpaid status and options for potential refinance",
     ibvShortener: "Allows to shorten IBV/ESIG links and insert into TXT preview",
     remarkFilter: "Hides unnecessary loan remarks, keeps only critical ones",
-    maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
-    crmStatusCleaner: 'Reduces the list of loan statuses',
-    loyaltyRefi: 'Tracks refinance, adjusts loyalty points',
-    earlyPayBank: "Warns when customer’s primary bank is probably an early pay bank",
-    algoAccountMatcher: "Parses ALGO notes, shows Account number matches status"
+    maxExposure: "Calculates Max Exposure directly in LMS",
+    crmStatusCleaner: "Reduces the list of loan statuses",
+    loyaltyRefi: "Tracks refinance, adjusts loyalty points",
+    earlyPayBank: "Warns when customer's primary bank is probably an early pay bank",
+    algoAccountMatcher: "Parses ALGO notes, shows account number match status",
+    slackDM: "Open 1:1 Slack DM from LMS",
 };
+
 
 
 
@@ -925,6 +940,341 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
+/*** ============ CC Slack DM Helper ============ ***/
+if (MODULES.slackDM && location.href.includes("CustomerDetails.aspx")) {
+
+  const CC_SLACK_DM = (() => {
+    "use strict";
+
+    const CONFIG = {
+      enabledOn: "CustomerDetails.aspx",
+
+      SHEET_URL:
+        "https://docs.google.com/spreadsheets/d/1kpeuN8hNqBG8MtO8q--Ton5sHlJjiJFrgvWqHJn-aVc/export?format=csv&gid=0",
+
+      COL_CRM_NICK: "CRM Name",
+      COL_LMS_NAME: "Name in LMS",
+      COL_SLACK_UID: "User ID (Slack)",
+
+      CRM_NICK_SELECTOR:
+        "#masterHeader > tbody > tr > td:nth-child(2) > span.LoginType",
+
+      // fallback if worker doesn't send installUrl
+      OAUTH_INSTALL_URL: "https://slack.ccwusa.org/install",
+      DM_DEEPLINK_URL: "https://slack.ccwusa.org/dm_deeplink",
+
+      CACHE_TTL_MS: 60 * 60 * 1000, // 1h
+    };
+
+    const ICON_IMG_DATA_URI =
+      'data:image/jpeg;base64,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';
+
+    // Make cache keys unique inside "big script"
+    const CACHE_KEY = "CC_SLACK_DM__CSV_DUAL_MAPS";
+    const CACHE_TS_KEY = "CC_SLACK_DM__CSV_DUAL_MAPS_TS";
+
+    function normSpaces(s) {
+      return String(s || "").replace(/\s+/g, " ").trim();
+    }
+
+    function gmGet(url, timeout = 15000) {
+      return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: "GET",
+          url,
+          timeout,
+          onload: (r) =>
+            resolve({
+              status: r.status,
+              text: r.responseText || "",
+              headers: r.responseHeaders || "",
+            }),
+          onerror: (e) => reject({ type: "network_error", e }),
+          ontimeout: () => reject({ type: "timeout" }),
+        });
+      });
+    }
+
+    function openSlackLegacy(url) {
+      window.open(url, "_blank");
+    }
+
+    function openHttp(url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+
+    function parseCSVLine(line) {
+      const cols = [];
+      let col = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') inQuotes = !inQuotes;
+        else if (ch === "," && !inQuotes) {
+          cols.push(col);
+          col = "";
+        } else col += ch;
+      }
+      cols.push(col);
+
+      return cols.map((c) => String(c || "").trim().replace(/^"|"$/g, ""));
+    }
+
+    function buildDualMaps(csv) {
+      const lines = String(csv || "")
+        .split(/\r?\n/)
+        .filter((l) => l.trim().length);
+
+      if (!lines.length) throw new Error("CSV empty");
+
+      const header = parseCSVLine(lines[0]);
+
+      const idxCrm = header.indexOf(CONFIG.COL_CRM_NICK);
+      const idxLms = header.indexOf(CONFIG.COL_LMS_NAME);
+      const idxSlack = header.indexOf(CONFIG.COL_SLACK_UID);
+
+      if (idxCrm === -1 || idxLms === -1 || idxSlack === -1) {
+        throw new Error(
+          `CSV header mismatch. Need "${CONFIG.COL_CRM_NICK}", "${CONFIG.COL_LMS_NAME}", "${CONFIG.COL_SLACK_UID}". Got: ${header.join(" | ")}`
+        );
+      }
+
+      const mapByCrmNick = Object.create(null);
+      const mapByLmsName = Object.create(null);
+
+      for (const line of lines.slice(1)) {
+        const cols = parseCSVLine(line);
+        const crmNick = (cols[idxCrm] || "").trim();
+        const lmsName = (cols[idxLms] || "").trim();
+        const slackUid = (cols[idxSlack] || "").trim();
+
+        if (crmNick && slackUid) mapByCrmNick[crmNick] = slackUid;
+        if (lmsName && slackUid) mapByLmsName[lmsName] = slackUid;
+      }
+
+      return { mapByCrmNick, mapByLmsName };
+    }
+
+    function getCrmNick() {
+      const el = document.querySelector(CONFIG.CRM_NICK_SELECTOR);
+      if (!el) return null;
+
+      const raw = normSpaces(el.textContent || "");
+      if (!raw) return null;
+
+      return normSpaces(raw.split("|")[0]);
+    }
+
+    async function loadDualMaps(force = false) {
+      const ts = GM_getValue(CACHE_TS_KEY, 0);
+      const cached = GM_getValue(CACHE_KEY, null);
+
+      if (!force && cached && Date.now() - ts < CONFIG.CACHE_TTL_MS) return cached;
+
+      const res = await gmGet(CONFIG.SHEET_URL);
+      const maps = buildDualMaps(res.text);
+
+      GM_setValue(CACHE_KEY, maps);
+      GM_setValue(CACHE_TS_KEY, Date.now());
+      return maps;
+    }
+
+    async function fetchDeeplink(crmNick, agentSlackUid) {
+      const apiUrl =
+        `${CONFIG.DM_DEEPLINK_URL}` +
+        `?login=${encodeURIComponent(crmNick)}` +
+        `&agent=${encodeURIComponent(agentSlackUid)}`;
+
+      const res = await gmGet(apiUrl, 20000);
+      const text = normSpaces(res.text);
+
+      try {
+        const j = JSON.parse(res.text);
+        return { kind: "json", status: res.status, body: j, rawText: text };
+      } catch (e) {
+        return { kind: "text", status: res.status, text };
+      }
+    }
+
+    function showAuthHelp(msg, installUrl) {
+      alert(msg);
+      openHttp(installUrl || CONFIG.OAUTH_INSTALL_URL);
+    }
+
+    let clickLock = false;
+
+    async function openDmToAgentByCellText(agentCellText) {
+      if (clickLock) return;
+      clickLock = true;
+      setTimeout(() => (clickLock = false), 700);
+
+      const crmNick = getCrmNick();
+      if (!crmNick) {
+        alert("CRM Nick not found (selector mismatch?)");
+        return;
+      }
+
+      const { mapByLmsName } = await loadDualMaps(false);
+      const agentLmsName = normSpaces(agentCellText || "");
+      const agentSlackUid = mapByLmsName[agentLmsName];
+
+      if (!agentSlackUid) {
+        alert(`No Slack UID in CSV for agent "${agentLmsName}".`);
+        return;
+      }
+
+      const resp = await fetchDeeplink(crmNick, agentSlackUid);
+
+      if (resp.kind === "json") {
+        const b = resp.body;
+
+        if (b && b.ok === true && typeof b.url === "string") {
+          if (b.type === "deeplink" && b.url.startsWith("slack://")) {
+            openSlackLegacy(b.url);
+            return;
+          }
+          if (b.type === "redirect" && b.url.startsWith("https://")) {
+            openHttp(b.url);
+            return;
+          }
+        }
+
+        if (b && b.ok === false) {
+          const message = b.message || "Slack authorization is required.";
+          const installUrl = b.installUrl || CONFIG.OAUTH_INSTALL_URL;
+
+          if (b.code === "not_authorized" || b.code === "token_revoked") {
+            showAuthHelp(message, installUrl);
+            return;
+          }
+
+          alert(message);
+          console.warn("Worker error:", b);
+          return;
+        }
+
+        alert("Unexpected response from Worker (JSON).");
+        console.warn("Worker JSON:", b);
+        return;
+      }
+
+      const link = resp.text;
+      if (link.startsWith("slack://")) return void openSlackLegacy(link);
+      if (link.startsWith("https://")) return void openHttp(link);
+
+      alert(`Unexpected response from Worker: ${link}`);
+      console.warn("Worker response:", link);
+    }
+
+    function createStyledIcon(agentName) {
+      const icon = document.createElement("span");
+      icon.innerHTML = `
+        <img src="${ICON_IMG_DATA_URI}"
+          width="16" height="16" style="
+            vertical-align: middle;
+            cursor: pointer;
+            opacity: 0.8;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            margin-left: 4px;
+            border: 1px solid rgba(0,0,0,0.15);
+            border-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+          ">
+      `;
+
+      icon.title = "DM in Slack";
+
+      icon.addEventListener("mouseenter", () => {
+        const img = icon.querySelector("img");
+        if (!img) return;
+        img.style.opacity = "1";
+        img.style.transform = "scale(1.1)";
+        img.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+      });
+
+      icon.addEventListener("mouseleave", () => {
+        const img = icon.querySelector("img");
+        if (!img) return;
+        img.style.opacity = "0.8";
+        img.style.transform = "scale(1)";
+        img.style.boxShadow = "0 1px 2px rgba(0,0,0,0.1)";
+      });
+
+      icon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDmToAgentByCellText(agentName).catch((err) => {
+          console.error("openDmToAgentByCellText error:", err);
+          alert("Error opening DM. See console.");
+        });
+      });
+
+      return icon;
+    }
+
+    let scanScheduled = false;
+
+    async function scanCells() {
+      scanScheduled = false;
+
+      const selectors =
+        'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(4) td:nth-child(4), ' +
+        'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(5) td:nth-child(4), ' +
+        'div[id^="loan_"] table.ProfileSectionTable tbody tr:nth-child(6) td:nth-child(4)';
+
+      const cells = Array.from(document.querySelectorAll(selectors));
+      if (!cells.length) return;
+
+      let maps;
+      try {
+        maps = await loadDualMaps(false);
+      } catch (e) {
+        console.error("CSV load failed:", e);
+        return;
+      }
+
+      const mapByLmsName = maps.mapByLmsName || Object.create(null);
+
+      for (const cell of cells) {
+        if (cell.dataset.ccSlackDm === "1") continue;
+
+        const agentText = normSpaces(cell.textContent || "");
+        if (!agentText || agentText === "-") continue;
+
+        if (!mapByLmsName[agentText]) continue;
+
+        cell.appendChild(createStyledIcon(agentText));
+        cell.dataset.ccSlackDm = "1";
+      }
+    }
+
+    function scheduleScan() {
+      if (scanScheduled) return;
+      scanScheduled = true;
+      setTimeout(() => scanCells().catch(console.error), 80);
+    }
+
+    function start() {
+      // just in case this block is reused elsewhere
+      if (!location.href.includes(CONFIG.enabledOn)) return;
+
+      scheduleScan();
+      new MutationObserver(scheduleScan).observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    }
+
+    return {
+      start,
+      // optional debug hooks if you ever need them:
+      _loadDualMaps: loadDualMaps,
+      _getCrmNick: getCrmNick,
+    };
+  })();
+
+  CC_SLACK_DM.start();
+}
 
     /*** ============ Toggle All Remarks ============ ***/
 
@@ -968,6 +1318,7 @@ if (MODULES.emailFilter && location.href.includes('CustomerDetails')) {
 
         addToggleButton();
     }
+
     /*** ============ Copy/Paste LMS ============ ***/
 
 if (MODULES.copyPaste && location.href.includes('CustomerDetails')) {
@@ -1658,7 +2009,7 @@ if (MODULES.maxExposure && location.href.includes('CustomerDetails.aspx')) {
 /*** ============ CRM Status Cleaner (module) — UW ============ ***/
 if (MODULES.crmStatusCleaner && location.href.includes('EditStatus.aspx')) {
 
-  // Конфіг whitelist для UW
+  // whitelist for UW
   const RAW_ALLOWED = [
     'Never Answered',
     'TBW',
@@ -2692,7 +3043,7 @@ if (MODULES.loyaltyRefi) {
 if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
     'use strict';
 const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
-    // Перевіряємо, чи є статус "Gold", "Platinum", "VIP" або "Diamond"
+    // "Gold", "Platinum", "VIP" or "Diamond"
     const statusCells = document.querySelectorAll(statusColumnSelector);
     let eligibleStatusFound = false;
     statusCells.forEach(statusCell => {
@@ -2704,12 +3055,12 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
     });
 
     if (eligibleStatusFound) {
-        // Функція для парсингу суми
+        // Sum parsing
         const extractAmount = (element) => {
             return parseFloat(element.textContent.trim().replace('$', '').replace(',', ''));
         };
 
-        // Показуємо відсоток поруч із Total Paid
+        // % from Total Paid
         const displayPercentage = (percentage, payments, status) => {
             const percentageElement = document.createElement('span');
             percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
@@ -2766,7 +3117,7 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
                 const totalPrincipalLoaned = extractAmount(totalPrincipalLoanedElement);
                 const totalPaid = extractAmount(totalPaidElement);
 
-                // Останній рядок із потрібним статусом
+                // Last row with needed status
                 const allRows = document.querySelectorAll('.DataTable.LoansTbl tbody tr');
                 const lastEligibleRow = allRows[lastEligibleRowIndex];
 
