@@ -29,7 +29,7 @@
     const CURRENT_VERSION = "2.61";
 
 const changelog = [
-  "🆕 - Slack DM MODULE (in one click opens a your chat with the agent). - 🆕",
+  "🆕 - Slack DM MODULE (in one click opens your chat with the agent). - 🆕",
   "How to use: On the first click, wait for the authorization popup (can take up to ~10 seconds).",
   "On the next page click \"Allow\" to authorize.",
   "After you allow access, close the confirmation page and click the Slack DM button again to open the chat.",
