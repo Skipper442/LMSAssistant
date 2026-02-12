@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.4
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
@@ -10,6 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
 // @grant        GM_setValue
+// @grant        unsafeWindow
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
 // @connect      docs.google.com
@@ -25,15 +26,16 @@
     'use strict';
 
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.3";
+    const CURRENT_VERSION = "2.4";
 
 const changelog = [
-  "🆕 - Slack DM MODULE (in one click opens a your chat with the agent). - 🆕",
-  "How to use: On the first click, wait for the authorization popup (can take up to ~10 seconds).",
-  "On the next page click \"Allow\" to authorize.",
-  "After you allow access, close the confirmation page and click the Slack DM button again to open the chat.",
-  "If nothing happens: make sure Slack desktop/app is installed and you are logged into the correct workspace."
+  "🆕 - APR AutoFix MODULE (Payment Plan) - 🆕",
+  "What it does: After you submit a Payment Plan, the script checks the loan on CustomerDetails.",
+  "If APR is 0% and the loan has Payment Plan status, it updates APR to the Disclosed APR automatically.",
+  "Success popup: \"APR was updated to the disclosed rate as of now ({APR}%).\"",
+  "If APR change is blocked by extension-period restriction, it creates a Follow-up on the extension end date and shows a warning popup."
 ];
+
 
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -100,31 +102,35 @@ const changelog = [
 
     // ===== End Version Check =====
 
-    const MODULES = {
-        lmsAssistant: true, // Hidden but always on
-        emailFilter: true,
-        qcSearch: true,
-        notifications: true,
-        briaCall: true,
-        slackDM: true
-    };
+const MODULES = {
+    lmsAssistant: true, // Hidden but always on
+    emailFilter: true,
+    qcSearch: true,
+    notifications: true,
+    briaCall: true,
+    slackDM: true,
+    aprAutoFix: true,
+};
 
-    const MODULE_LABELS = {
-        emailFilter: 'Email Filter',
-        qcSearch: 'QC Search',
-        notifications: 'Notifications BETA',
-        briaCall: 'Bria Call',
-        slackDM: 'Slack DM'
-    };
+const MODULE_LABELS = {
+    emailFilter: 'Email Filter',
+    qcSearch: 'QC Search',
+    notifications: 'Notifications BETA',
+    briaCall: 'Bria Call',
+    slackDM: 'Slack DM',
+    aprAutoFix: 'APR AutoFix (PP)',
+};
 
-    const MODULE_DESCRIPTIONS = {
-        lmsAssistant: "Highlights states, manages call hours",
-        emailFilter: "Filters the list of email templates",
-        qcSearch: "QC Search — quick phone-based lookup",
-        notifications: "Enables sound and notifications for the tab",
-        briaCall: "Adds Call via Bria button on CustomerDetails",
-        slackDM: "Open 1:1 Slack DM from LMS",
-    };
+const MODULE_DESCRIPTIONS = {
+    lmsAssistant: "Highlights states, manages call hours",
+    emailFilter: "Filters the list of email templates",
+    qcSearch: "QC Search — quick phone-based lookup",
+    notifications: "Enables sound and notifications for the tab",
+    briaCall: "Adds Call via Bria button on CustomerDetails",
+    slackDM: "Open 1:1 Slack DM from LMS",
+    aprAutoFix: "After Payment Plan submit: if APR is 0% on CustomerDetails, update APR to Disclosed APR",
+};
+
 
 
 
@@ -1138,6 +1144,555 @@ if (MODULES.slackDM && location.href.includes("CustomerDetails.aspx")) {
     const element = getElement('#maincontent_Td_CityHeader');
     if (element) element.textContent = 'Quick Search';
 }
+
+/*** ============ QC LMS APR AutoFix (PP) ============ ***/
+
+if (MODULES.aprAutoFix && (location.href.includes('PaymentPlan.aspx') || location.href.includes('CustomerDetails.aspx'))) {
+  const getElement = (selector) => document.querySelector(selector);
+  const getElements = (selector) => document.querySelectorAll(selector);
+
+  let qcAprAutoFix_debounceTimer = null;
+  let qcAprAutoFix_lastAlertLoan = null;
+  let qcAprAutoFix_activePopupLoan = null;
+
+  let qcAprAutoFix_suppressUntil = 0;
+
+  let qcAprAutoFix_inFlight = false;
+  let qcAprAutoFix_lastRunAt = 0;
+
+  const qcAprAutoFix_FOLLOWUP_KEY = '[APR-AUTO]';
+  const qcAprAutoFix_PP_MARKER_KEY = 'qcAprAutoFix_pp_pending'; // was tm_pp_autofix_pending
+
+  const qcAprAutoFix_waitForBody = (timeoutMs = 8000) => {
+    if (document.body) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const t0 = Date.now();
+      const t = setInterval(() => {
+        if (document.body) {
+          clearInterval(t);
+          resolve(true);
+        } else if (Date.now() - t0 > timeoutMs) {
+          clearInterval(t);
+          resolve(false);
+        }
+      }, 50);
+    });
+  };
+
+  const qcAprAutoFix_waitForConditionByObserver = async (checkFn, { timeoutMs = 15000 } = {}) => {
+    const okBody = await qcAprAutoFix_waitForBody(timeoutMs);
+    if (!okBody) return false;
+
+    try { if (checkFn()) return true; } catch (_) {}
+
+    return new Promise((resolve) => {
+      let done = false;
+
+      const finish = (result) => {
+        if (done) return;
+        done = true;
+        try { observer.disconnect(); } catch (_) {}
+        clearTimeout(to);
+        resolve(result);
+      };
+
+      const observer = new MutationObserver(() => {
+        try { if (checkFn()) finish(true); } catch (_) {}
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+      const to = setTimeout(() => finish(false), timeoutMs);
+    });
+  };
+
+  const qcAprAutoFix_mmddyyyy = (dateObj) => {
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    const yyyy = String(dateObj.getFullYear());
+    return `${mm}/${dd}/${yyyy}`;
+  };
+
+  const qcAprAutoFix_tryParseMmDdYyyyToDate = (s) => {
+    const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const mm = Number(m[1]);
+    const dd = Number(m[2]);
+    const yyyy = Number(m[3]);
+    const d = new Date(yyyy, mm - 1, dd);
+    if (d.getFullYear() !== yyyy || d.getMonth() !== mm - 1 || d.getDate() !== dd) return null;
+    return d;
+  };
+
+  const qcAprAutoFix_getCustomerIdFromUrl = () => new URL(location.href).searchParams.get('customerid');
+  const qcAprAutoFix_getLoanIdFromUrl = () => new URL(location.href).searchParams.get('loanid');
+
+  const qcAprAutoFix_getLoanHeader = () => {
+    const loanDivs = getElements('[id^="loan_"]');
+    for (const div of loanDivs) {
+      const header = div.querySelector('div.Header');
+      if (!header) continue;
+
+      const fullText = header.textContent.trim();
+      const rateLink = div.querySelector('[id*="RateLink"]');
+      const loanNum =
+        (rateLink && rateLink.href && rateLink.href.match(/changerate\((\d+)\)/)?.[1]) ||
+        div.id.replace('loan_', '');
+
+      const statusMatch = fullText.match(/Loan#\s*\d+\/\s*(.*)$/);
+      const statusText = statusMatch ? statusMatch[1].trim() : fullText;
+
+      return { loanId: div.id, headerText: statusText, loanNum };
+    }
+    return null;
+  };
+
+  const qcAprAutoFix_getAprTd = () => (
+    getElement('table.ProfileSectionTable tr:nth-child(12) td:nth-child(2)') ||
+    Array.from(getElements('td')).find((td) => (td.textContent || '').includes('Disclosed APR'))
+  );
+
+  const qcAprAutoFix_parseApr = (text) => {
+    const match = String(text || '').match(/(\d+(?:\.\d+)?)\s*%,?\s*Disclosed\s*APR\s*(\d+(?:\.\d+)?)/i);
+    return match ? { current: parseFloat(match[1]), disclosed: parseFloat(match[2]) } : null;
+  };
+
+  const qcAprAutoFix_isCustomerDetailsDataReady = () => {
+    const loanHeader = qcAprAutoFix_getLoanHeader();
+    if (!loanHeader?.loanNum) return false;
+    const aprTd = qcAprAutoFix_getAprTd();
+    const apr = aprTd ? qcAprAutoFix_parseApr(aprTd.textContent) : null;
+    if (!apr) return false;
+    return Number.isFinite(apr.current) && Number.isFinite(apr.disclosed);
+  };
+
+  const qcAprAutoFix_getFollowUpTextsFromCustomerDetails = () => {
+    const container =
+      getElement('#mainpropertiesview > table.ProfileMessagesTable') ||
+      getElement('#mainpropertiesview') ||
+      document;
+
+    const row = container.querySelector('#ctl00_FollowUpsLink')?.closest('tr');
+    const scope = row || container;
+
+    const spans = scope.querySelectorAll('tr.tr-followup td.td1 span');
+    return Array.from(spans).map((s) => (s.textContent || '').trim()).filter(Boolean);
+  };
+
+  const qcAprAutoFix_customerAlreadyUnderControl = () => {
+    const texts = qcAprAutoFix_getFollowUpTextsFromCustomerDetails();
+    if (!texts.length) return false;
+    const joined = texts.join('\n').toLowerCase();
+    return joined.includes(qcAprAutoFix_FOLLOWUP_KEY.toLowerCase()) || joined.includes('apr update for pp');
+  };
+
+  const qcAprAutoFix_closeAnyPopup = () => {
+    const p = getElement('.apr-fixer-popup');
+    if (p) p.remove();
+    qcAprAutoFix_activePopupLoan = null;
+    qcAprAutoFix_lastAlertLoan = null;
+  };
+
+  const qcAprAutoFix_showPopup = (title, lines) => {
+    qcAprAutoFix_closeAnyPopup();
+
+    const box = document.createElement('div');
+    box.className = 'apr-fixer-popup';
+
+    const header = document.createElement('div');
+    header.textContent = title || '';
+    Object.assign(header.style, {
+      fontWeight: '700',
+      marginBottom: '10px',
+      fontFamily: 'Segoe UI, sans-serif'
+    });
+
+    const body = document.createElement('div');
+    (lines || []).filter(Boolean).forEach((txt) => {
+      const p = document.createElement('div');
+      p.textContent = String(txt);
+      Object.assign(p.style, { margin: '6px 0', fontFamily: 'Segoe UI, sans-serif' });
+      body.appendChild(p);
+    });
+
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "OK";
+    Object.assign(closeBtn.style, {
+      marginTop: "15px",
+      padding: "6px 14px",
+      border: "1px solid #a27c33",
+      borderRadius: "4px",
+      background: "#5c4400",
+      backgroundImage: "url(Images/global-button-back.png)",
+      backgroundRepeat: "repeat-x",
+      color: "#fff",
+      fontWeight: "bold",
+      cursor: "pointer",
+      fontFamily: "Arial, Helvetica, sans-serif"
+    });
+    closeBtn.onclick = () => box.remove();
+
+    Object.assign(box.style, {
+      position: "fixed",
+      top: "20px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      backgroundColor: "#fff3cd",
+      color: "#5c4400",
+      padding: "20px 30px",
+      borderRadius: "10px",
+      fontSize: "14px",
+      fontFamily: "Segoe UI, sans-serif",
+      fontWeight: "500",
+      zIndex: "99999",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+      maxWidth: "90%",
+      textAlign: "center"
+    });
+
+    box.appendChild(header);
+    box.appendChild(body);
+    box.appendChild(closeBtn);
+    document.body.appendChild(box);
+  };
+
+  const qcAprAutoFix_runClosePopupToRefreshUI = async () => {
+    const okBody = await qcAprAutoFix_waitForBody(5000);
+    if (!okBody) return false;
+
+    return new Promise((resolve) => {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.left = '-10000px';
+      iframe.style.top = '-10000px';
+      iframe.style.width = '10px';
+      iframe.style.height = '10px';
+      iframe.style.border = '0';
+      iframe.src = '/plm.net/customers/ClosePopup.aspx';
+
+      let done = false;
+      const finish = (result) => {
+        if (done) return;
+        done = true;
+        try { iframe.remove(); } catch (_) {}
+        resolve(result);
+      };
+
+      iframe.onload = () => setTimeout(() => finish(true), 300);
+      document.body.appendChild(iframe);
+      setTimeout(() => finish(false), 2500);
+    });
+  };
+
+  const qcAprAutoFix_buildChangeRateUrl = (loanNum) =>
+    new URL(`/plm.net/customers/ChangeRate.aspx?loanid=${encodeURIComponent(loanNum)}`, location.origin).toString();
+
+  const qcAprAutoFix_parseExtensionPeriodEndDateFromText = (text) => {
+    const s = String(text || '').replace(/\s+/g, ' ').trim();
+    const m = s.match(/extension period\s*\(\s*(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})\s*\)/i);
+    if (!m) return null;
+    const endStr = m[2];
+    const endDate = qcAprAutoFix_tryParseMmDdYyyyToDate(endStr);
+    if (!endDate) return null;
+    return { startStr: m[1], endStr, endDate };
+  };
+
+  const qcAprAutoFix_detectAprBlockedByExtension = (doc) => {
+    const raw = (doc.body && doc.body.innerText ? doc.body.innerText : '');
+    const text = raw.replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+    if (!/New rate will be applied to extension period/i.test(text)) return null;
+
+    const parsed = qcAprAutoFix_parseExtensionPeriodEndDateFromText(text);
+    return { followUpDateObj: parsed ? parsed.endDate : null, followUpDateStr: parsed ? parsed.endStr : null };
+  };
+
+  const qcAprAutoFix_autoChangeRateAjax = async (loanNum, targetApr) => {
+    const url = qcAprAutoFix_buildChangeRateUrl(loanNum);
+
+    try {
+      const getResponse = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: location.href,
+        },
+        credentials: 'same-origin',
+      });
+
+      if (!getResponse.ok) return { ok: false, blocked: false };
+
+      const formHtml = await getResponse.text();
+      const doc = new DOMParser().parseFromString(formHtml, 'text/html');
+
+      const blockedInfo = qcAprAutoFix_detectAprBlockedByExtension(doc);
+      if (blockedInfo) return { ok: false, blocked: true, ...blockedInfo };
+
+      const form = doc.querySelector('form');
+      if (!form) return { ok: false, blocked: false };
+
+      const formData = new FormData();
+      form.querySelectorAll('input, select, textarea').forEach((el) => {
+        const name = el.getAttribute('name');
+        if (!name) return;
+
+        const tag = el.tagName.toLowerCase();
+        const type = (el.getAttribute('type') || '').toLowerCase();
+
+        if (tag === 'select') { formData.append(name, el.value); return; }
+        if (type === 'checkbox' || type === 'radio') { if (el.checked) formData.append(name, el.value); return; }
+        if (type === 'submit' || type === 'button') return;
+
+        formData.append(name, el.value ?? '');
+      });
+
+      formData.set('ctl00$maincontent$Rate1', String(targetApr));
+      formData.set('ctl00$maincontent$Button_Submit', 'Update');
+
+      const postResponse = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest', Referer: location.href },
+        credentials: 'same-origin',
+      });
+
+      const ok = postResponse.ok || postResponse.status === 302;
+      return { ok, blocked: false };
+    } catch (_) {
+      return { ok: false, blocked: false };
+    }
+  };
+
+  const qcAprAutoFix_buildFollowUpComment = (disclosedApr) => {
+    const aprPart = disclosedApr ? `APR ${disclosedApr}%` : 'APR';
+    return `APR update for PP, ${aprPart} ${qcAprAutoFix_FOLLOWUP_KEY}`;
+  };
+
+  const qcAprAutoFix_createFollowUpBackground = async ({ customerid, followUpDateObj, disclosedApr, adminId }) => {
+    if (qcAprAutoFix_customerAlreadyUnderControl()) return { ok: true, skipped: true };
+
+    const url = new URL('/plm.net/customers/CustomerFollowUps.aspx', location.origin);
+    url.searchParams.set('customerid', String(customerid));
+    url.searchParams.set('section', 'mainpropertiesview');
+
+    const getResp = await fetch(url.toString(), {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', Referer: location.href },
+    });
+    if (!getResp.ok) return { ok: false };
+
+    const html = await getResp.text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const viewstate = doc.querySelector('input[name="__VIEWSTATE"]')?.value || '';
+    const viewstateGen = doc.querySelector('input[name="__VIEWSTATEGENERATOR"]')?.value || '';
+    const eventVal = doc.querySelector('input[name="__EVENTVALIDATION"]')?.value || '';
+    if (!viewstate || !eventVal) return { ok: false };
+
+    const adminSel = doc.querySelector('select[name="ctl00$maincontent$NewAdmin"]');
+    const resolvedAdminId =
+      adminId ||
+      adminSel?.value ||
+      adminSel?.querySelector('option[selected]')?.value ||
+      adminSel?.querySelector('option')?.value ||
+      '22';
+
+    const fd = new FormData();
+    fd.set('__VIEWSTATE', viewstate);
+    if (viewstateGen) fd.set('__VIEWSTATEGENERATOR', viewstateGen);
+    fd.set('__EVENTVALIDATION', eventVal);
+
+    fd.set('ctl00$maincontent$CustomerId', String(customerid));
+    fd.set('ctl00$maincontent$NewAdmin', String(resolvedAdminId));
+
+    const dateObj = followUpDateObj instanceof Date ? followUpDateObj : null;
+    const fallback = new Date(); fallback.setDate(fallback.getDate() + 1);
+
+    fd.set('ctl00$maincontent$Date$Date', qcAprAutoFix_mmddyyyy(dateObj || fallback));
+    fd.set('ctl00$maincontent$Time', 'Time_NoSpecificTime');
+    fd.set('ctl00$maincontent$TimeHour', '10');
+    fd.set('ctl00$maincontent$TimeMinute', '00');
+    fd.set('ctl00$maincontent$TimeAmPm', 'AM');
+    fd.set('ctl00$maincontent$WarningMinutes', '0');
+    fd.set('ctl00$maincontent$NewCommentText', qcAprAutoFix_buildFollowUpComment(String(disclosedApr || '')));
+    fd.set('ctl00$maincontent$Btn_AddFollowUpAndClose', 'Submit and Close');
+
+    const postResp = await fetch(url.toString(), {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: fd,
+      headers: { Referer: url.toString() },
+    });
+
+    return { ok: postResp.ok || postResp.status === 302 };
+  };
+
+  const qcAprAutoFix_shouldAutoFix = ({ loanHeader, apr }) => {
+    if (!loanHeader || !apr) return false;
+    const statuses = loanHeader.headerText.split(/,\s*/);
+    const hasPaymentPlan = statuses.includes('Payment Plan');
+    const hasValidStatus = statuses.some((s) => s.includes('Active') || s.includes('Past Due') || s.includes('In-House Collections'));
+    if (!hasPaymentPlan || !hasValidStatus) return false;
+    if (!(apr.current === 0)) return false;
+    return true;
+  };
+
+  const qcAprAutoFix_consumeMarker = () => {
+    try {
+      const raw = sessionStorage.getItem(qcAprAutoFix_PP_MARKER_KEY);
+      if (!raw) return null;
+      sessionStorage.removeItem(qcAprAutoFix_PP_MARKER_KEY);
+      const payload = JSON.parse(raw);
+      if (!payload?.t || (Date.now() - payload.t) > 2 * 60 * 1000) return null;
+      return payload;
+    } catch (_) {
+      try { sessionStorage.removeItem(qcAprAutoFix_PP_MARKER_KEY); } catch (_) {}
+      return null;
+    }
+  };
+
+  const qcAprAutoFix_hookPaymentPlanSubmit = async () => {
+    if (!location.href.includes('/plm.net/customers/PaymentPlan.aspx')) return;
+
+    const okBody = await qcAprAutoFix_waitForBody(8000);
+    if (!okBody) return;
+
+    const btn = getElement('#maincontent_Btn_Submit');
+    if (!btn) return;
+
+    btn.addEventListener('click', () => {
+      try {
+        const payload = { t: Date.now(), customerid: qcAprAutoFix_getCustomerIdFromUrl() || null, loanid: qcAprAutoFix_getLoanIdFromUrl() || null };
+        sessionStorage.setItem(qcAprAutoFix_PP_MARKER_KEY, JSON.stringify(payload));
+      } catch (_) {}
+    }, true);
+  };
+
+  const qcAprAutoFix_runNow = async () => {
+    if (!location.href.includes('/plm.net/customers/CustomerDetails.aspx')) return;
+
+    if (qcAprAutoFix_inFlight) return;
+    if (Date.now() - qcAprAutoFix_lastRunAt < 12000) return;
+
+    qcAprAutoFix_inFlight = true;
+    qcAprAutoFix_lastRunAt = Date.now();
+
+    try {
+      if (qcAprAutoFix_customerAlreadyUnderControl()) return;
+
+      const ready = await qcAprAutoFix_waitForConditionByObserver(qcAprAutoFix_isCustomerDetailsDataReady, { timeoutMs: 15000 });
+      if (!ready) return;
+
+      if (qcAprAutoFix_customerAlreadyUnderControl()) return;
+
+      const loanHeader = qcAprAutoFix_getLoanHeader();
+      const aprTd = qcAprAutoFix_getAprTd();
+      const apr = aprTd ? qcAprAutoFix_parseApr(aprTd.textContent) : null;
+
+      if (!loanHeader?.loanNum || !apr?.disclosed) return;
+      if (!qcAprAutoFix_shouldAutoFix({ loanHeader, apr })) return;
+
+      qcAprAutoFix_suppressUntil = Date.now() + 12000;
+
+      const res = await qcAprAutoFix_autoChangeRateAjax(String(loanHeader.loanNum), apr.disclosed);
+
+      if (res.blocked) {
+        const customerid = qcAprAutoFix_getCustomerIdFromUrl();
+        if (customerid) {
+          const fu = await qcAprAutoFix_createFollowUpBackground({
+            customerid: Number(customerid),
+            followUpDateObj: res.followUpDateObj || null,
+            disclosedApr: String(apr.disclosed),
+            adminId: null,
+          });
+
+          await qcAprAutoFix_runClosePopupToRefreshUI();
+
+          const dateLine = res.followUpDateStr ? `Follow-up date: ${res.followUpDateStr}` : null;
+          let fuLine = 'Follow-up was created.';
+          if (fu?.skipped) fuLine = 'Follow-up already exists (created earlier).';
+          else if (!fu?.ok) fuLine = 'Follow-up create failed.';
+
+          qcAprAutoFix_showPopup('APR cannot be changed today', [
+            'Extension-period restriction detected.',
+            dateLine,
+            fuLine,
+          ]);
+        }
+        return;
+      }
+
+      if (!res.ok) return;
+
+      await qcAprAutoFix_runClosePopupToRefreshUI();
+
+      qcAprAutoFix_showPopup('APR updated', [
+        `APR was updated to the disclosed rate as of now (${apr.disclosed}%).`,
+      ]);
+    } finally {
+      qcAprAutoFix_inFlight = false;
+    }
+  };
+
+  const qcAprAutoFix_checkAndFixFallback = () => {
+    if (qcAprAutoFix_debounceTimer) return;
+
+    qcAprAutoFix_debounceTimer = setTimeout(() => {
+      qcAprAutoFix_debounceTimer = null;
+
+      if (Date.now() < qcAprAutoFix_suppressUntil) return;
+      if (!location.href.includes('/plm.net/customers/CustomerDetails.aspx')) return;
+      if (qcAprAutoFix_customerAlreadyUnderControl()) return;
+      if (!qcAprAutoFix_isCustomerDetailsDataReady()) return;
+
+      const loanHeader = qcAprAutoFix_getLoanHeader();
+      const aprTd = qcAprAutoFix_getAprTd();
+      const apr = aprTd ? qcAprAutoFix_parseApr(aprTd.textContent) : null;
+      if (!loanHeader || !apr) return;
+
+      if (qcAprAutoFix_shouldAutoFix({ loanHeader, apr })) {
+        qcAprAutoFix_runNow();
+        return;
+      }
+
+      const statuses = loanHeader.headerText.split(/,\s*/);
+      const hasPaymentPlan = statuses.includes('Payment Plan');
+      const hasValidStatus = statuses.some((s) => s.includes('Active') || s.includes('Past Due') || s.includes('In-House Collections'));
+
+      if (hasPaymentPlan && hasValidStatus && apr.current === 0) {
+        if (qcAprAutoFix_lastAlertLoan === loanHeader.loanId) return;
+        qcAprAutoFix_lastAlertLoan = loanHeader.loanId;
+        qcAprAutoFix_activePopupLoan = loanHeader.loanId;
+
+        qcAprAutoFix_showPopup('APR is 0%', [
+          'APR is 0% on a Payment Plan loan.',
+          'AutoFix should run automatically.',
+        ]);
+      }
+    }, 600);
+  };
+
+  const qcAprAutoFix_init = async () => {
+    qcAprAutoFix_hookPaymentPlanSubmit();
+
+    if (location.href.includes('/plm.net/customers/CustomerDetails.aspx')) {
+      const marker = qcAprAutoFix_consumeMarker();
+      if (marker) qcAprAutoFix_runNow();
+    }
+
+    if (!(await qcAprAutoFix_waitForBody(8000))) return;
+    const observer = new MutationObserver(qcAprAutoFix_checkAndFixFallback);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', qcAprAutoFix_init);
+  else qcAprAutoFix_init();
+}
+
+
+
+
 
 
 /*** ============ Notifications module ============ ***/
