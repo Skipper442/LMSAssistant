@@ -1468,7 +1468,64 @@ if (MODULES.aprAutoFix && (location.href.includes('PaymentPlan.aspx') || locatio
     return `APR update for PP, ${aprPart} ${qcAprAutoFix_FOLLOWUP_KEY}`;
   };
 
-  const qcAprAutoFix_createFollowUpBackground = async ({ customerid, followUpDateObj, disclosedApr, adminId }) => {
+  // --------- NEW/UPDATED: parse correct Collections Admin (avoid Processing Admin) ---------
+  const qcAprAutoFix_extractNameFromTd = (td) => {
+    if (!td) return null;
+    const firstTextNode = Array.from(td.childNodes).find((n) => n && n.nodeType === Node.TEXT_NODE);
+    const txt = (firstTextNode ? firstTextNode.textContent : td.textContent) || '';
+    const name = txt.replace(/\s+/g, ' ').trim();
+    return name || null;
+  };
+
+  const qcAprAutoFix_getCollectionsAdminNameFromCustomerDetails = (loanNum) => {
+    const loanRoot = loanNum ? document.querySelector(`#loan_${loanNum}`) : null;
+    const scope = loanRoot || document;
+
+    // Primary: locate the row via CollectionsAdminLink, then read the adjacent value TD
+    const link = scope.querySelector('[id*="CollectionsAdminLink"]');
+    if (link) {
+      const labelTd = link.closest('td');
+      const valueTd = labelTd?.nextElementSibling;
+
+      const name = qcAprAutoFix_extractNameFromTd(valueTd);
+      if (name && name !== '-') return name;
+
+      const name2 = (valueTd?.textContent || '').replace(/\s+/g, ' ').trim();
+      if (name2 && name2 !== '-') return name2;
+    }
+
+    // Fallback: search by label text; still keeps us on the right row
+    const tds = Array.from(scope.querySelectorAll('td'));
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const labelTd2 = tds.find(td => {
+      const t = norm(td.textContent);
+      return t === 'Collections Admin :' || t === 'Collections Admin:' || t === 'Collections Admin';
+    });
+
+    if (labelTd2) {
+      const valueTd2 = labelTd2.nextElementSibling;
+      const name3 = qcAprAutoFix_extractNameFromTd(valueTd2);
+      if (name3 && name3 !== '-') return name3;
+    }
+
+    return null;
+  };
+
+  const qcAprAutoFix_findAdminIdByName = (adminSelectEl, desiredName) => {
+    const want = String(desiredName || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!adminSelectEl || !want) return null;
+
+    const normalize = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const opts = Array.from(adminSelectEl.querySelectorAll('option'));
+
+    const exact = opts.find((o) => normalize(o.textContent) === want);
+    if (exact?.value) return exact.value;
+
+    const partial = opts.find((o) => normalize(o.textContent).includes(want));
+    return partial?.value || null;
+  };
+
+  const qcAprAutoFix_createFollowUpBackground = async ({ customerid, followUpDateObj, disclosedApr, adminId, collectionsAdminName }) => {
     if (qcAprAutoFix_customerAlreadyUnderControl()) return { ok: true, skipped: true };
 
     const url = new URL('/plm.net/customers/CustomerFollowUps.aspx', location.origin);
@@ -1491,7 +1548,12 @@ if (MODULES.aprAutoFix && (location.href.includes('PaymentPlan.aspx') || locatio
     if (!viewstate || !eventVal) return { ok: false };
 
     const adminSel = doc.querySelector('select[name="ctl00$maincontent$NewAdmin"]');
+
+    // Resolve adminId by the Collections Admin name (most important)
+    const byName = qcAprAutoFix_findAdminIdByName(adminSel, collectionsAdminName);
+
     const resolvedAdminId =
+      byName ||
       adminId ||
       adminSel?.value ||
       adminSel?.querySelector('option[selected]')?.value ||
@@ -1600,11 +1662,14 @@ if (MODULES.aprAutoFix && (location.href.includes('PaymentPlan.aspx') || locatio
       if (res.blocked) {
         const customerid = qcAprAutoFix_getCustomerIdFromUrl();
         if (customerid) {
+          const collectionsAdminName = qcAprAutoFix_getCollectionsAdminNameFromCustomerDetails(String(loanHeader.loanNum));
+
           const fu = await qcAprAutoFix_createFollowUpBackground({
             customerid: Number(customerid),
             followUpDateObj: res.followUpDateObj || null,
             disclosedApr: String(apr.disclosed),
             adminId: null,
+            collectionsAdminName,
           });
 
           await qcAprAutoFix_runClosePopupToRefreshUI();
@@ -1614,9 +1679,12 @@ if (MODULES.aprAutoFix && (location.href.includes('PaymentPlan.aspx') || locatio
           if (fu?.skipped) fuLine = 'Follow-up already exists (created earlier).';
           else if (!fu?.ok) fuLine = 'Follow-up create failed.';
 
+          const adminLine = collectionsAdminName ? `Assigned to: ${collectionsAdminName}` : null;
+
           qcAprAutoFix_showPopup('APR cannot be changed today', [
             'Extension-period restriction detected.',
             dateLine,
+            adminLine,
             fuLine,
           ]);
         }
@@ -1689,10 +1757,6 @@ if (MODULES.aprAutoFix && (location.href.includes('PaymentPlan.aspx') || locatio
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', qcAprAutoFix_init);
   else qcAprAutoFix_init();
 }
-
-
-
-
 
 
 /*** ============ Notifications module ============ ***/
