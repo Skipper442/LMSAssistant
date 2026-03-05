@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.30
+// @version      2.31
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -28,14 +28,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.30";
+    const CURRENT_VERSION = "2.31";
 
 const changelog = [
-  "🆕 - Slack DM MODULE (in one click opens a your chat with the agent). - 🆕",
-  "How to use: On the first click, wait for the authorization popup (can take up to ~10 seconds).",
-  "On the next page click \"Allow\" to authorize.",
-  "After you allow access, close the confirmation page and click the Slack DM button again to open the chat.",
-  "If nothing happens: make sure Slack desktop/app is installed and you are logged into the correct workspace."
+  "Changed tresholds in Overpaid Module, from 10% to 20% "
 ];
 
 
@@ -1736,7 +1732,7 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
             percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
             percentageElement.classList.add('loan-comparison-tooltip');
 
-            if (percentage > 10) {
+            if (percentage > 20) {
                 if (payments < 3 && !status.includes("Paid in Full")) {
                     percentageElement.style.color = '#de9d1b';
                     percentageElement.title = "Not enough payments made for potential refinancing.";
@@ -2143,257 +2139,6 @@ if (MODULES.slackDM && location.href.includes("CustomerDetails.aspx")) {
   })();
 
   CC_SLACK_DM.start();
-}
-
-
-/*** ============ Overpaid check module ============ ***/
-
-if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
-    'use strict';
-const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
-    // Перевіряємо, чи є статус "Gold", "Platinum", "VIP" або "Diamond"
-    const statusCells = document.querySelectorAll(statusColumnSelector);
-    let eligibleStatusFound = false;
-    statusCells.forEach(statusCell => {
-        const status = statusCell.textContent.trim();
-        const allowedStatuses = ["Gold", "Platinum", "VIP", "Diamond"];
-        if (allowedStatuses.includes(status)) {
-            eligibleStatusFound = true;
-        }
-    });
-
-    if (eligibleStatusFound) {
-        // Функція для парсингу суми
-        const extractAmount = (element) => {
-            return parseFloat(element.textContent.trim().replace('$', '').replace(',', ''));
-        };
-
-        // Показуємо відсоток поруч із Total Paid
-        const displayPercentage = (percentage, payments, status) => {
-            const percentageElement = document.createElement('span');
-            percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
-            percentageElement.classList.add('loan-comparison-tooltip');
-
-            if (percentage > 10) {
-                if (payments < 3 && !status.includes("Paid in Full")) {
-                    percentageElement.style.color = '#de9d1b';
-                    percentageElement.title = "Not enough payments made for potential refinancing.";
-                } else if (status.includes("Active") && status.includes("In-House Collections")) {
-                    percentageElement.style.color = 'red';
-                    percentageElement.title = "Last active loan is in collections.";
-                } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
-                    percentageElement.style.color = 'red';
-                    percentageElement.title = "Customer is in collection.";
-                } else {
-                    percentageElement.style.color = 'green';
-                    percentageElement.title = "Might be eligible, check with TL.";
-                }
-                percentageElement.style.fontWeight = '900';
-            } else {
-                percentageElement.style.color = 'red';
-                percentageElement.style.fontWeight = 'bold';
-            }
-
-            const totalPaidElement = document.querySelector(totalPaidSelector);
-            totalPaidElement.appendChild(percentageElement);
-        };
-
-        const calculatePercentage = (totalPaid, totalPrincipalLoaned) => {
-            return ((totalPaid - totalPrincipalLoaned) / totalPrincipalLoaned) * 100;
-        };
-
-
-        const totalPrincipalLoanedSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(2)';
-        const totalPaidSelector = '#maincontent_AccountSummary .DataTable tr:nth-child(2) td:nth-child(4)';
-
-
-        const loanStatusCells = document.querySelectorAll('.DataTable.LoansTbl tbody tr td:nth-child(3)');
-        let lastEligibleRowIndex = -1;
-        loanStatusCells.forEach((statusCell, index) => {
-            const status = statusCell.textContent.trim();
-            if (status.includes("Active") || status.includes("Paid in Full")) {
-                lastEligibleRowIndex = index;
-            } else if (status.includes("Past Due") && status.includes("In-House Collections")) {
-                lastEligibleRowIndex = index;
-            }
-        });
-
-        if (lastEligibleRowIndex !== -1) {
-            const totalPrincipalLoanedElement = document.querySelector(totalPrincipalLoanedSelector);
-            const totalPaidElement = document.querySelector(totalPaidSelector);
-            if (totalPrincipalLoanedElement && totalPaidElement) {
-                const totalPrincipalLoaned = extractAmount(totalPrincipalLoanedElement);
-                const totalPaid = extractAmount(totalPaidElement);
-
-                // Останній рядок із потрібним статусом
-                const allRows = document.querySelectorAll('.DataTable.LoansTbl tbody tr');
-                const lastEligibleRow = allRows[lastEligibleRowIndex];
-
-                const paymentsElement = lastEligibleRow.querySelector('td:nth-child(11)');
-                const payments = parseInt(paymentsElement.textContent.trim());
-
-                const status = lastEligibleRow.querySelector('td:nth-child(3)').textContent.trim();
-                const percentage = calculatePercentage(totalPaid, totalPrincipalLoaned);
-
-                displayPercentage(percentage, payments, status);
-            } else {
-                console.error('One or more elements not found.');
-            }
-        } else {
-            console.log('No clients with eligible statuses found.');
-        }
-    } else {
-        console.log('No clients with eligible statuses found.');
-    }
-}
-
-/*** ============ Early Pay Bank Detector ============ ***/
-if (MODULES.earlyPayBank && location.href.includes('CustomerDetails.aspx')) {
-    (function () {
-        'use strict';
-
-        const DANGEROUS_BANKS = [
-            'HUNTINGTON',
-            'REGIONS',
-            'CITIZENS',
-            'DISCOVER',
-            'NAVY FEDERAL',
-            'FIFTH',
-            'CREDIT UNION',
-            ' CU ',
-            ' FCU',
-            'C U',
-            'C/U'
-        ];
-
-        const CONFIG = {
-            primaryBankSelector: '#BankSection > table:nth-child(4) > tbody > tr:nth-child(2) > td:nth-child(2)'
-        };
-
-        let lastDangerousName = null; // remembers last dangerous bank text
-
-        function showStyledPopup(title, items, noIcon = false) {
-            const box = document.createElement('div');
-
-            const header = document.createElement('h3');
-            header.innerHTML = noIcon ? title : `<span style="color: red;">📌</span> ${title}`;
-            header.style.marginBottom = '10px';
-
-            const text = document.createElement('div');
-            text.innerHTML = items.map(txt => `• ${txt}`).join('<br>');
-            text.style.textAlign = 'left';
-
-            const closeBtn = document.createElement('button');
-            closeBtn.textContent = 'OK';
-            Object.assign(closeBtn.style, {
-                marginTop: '10px',
-                padding: '4px 12px',
-                border: '1px solid #a27c33',
-                borderRadius: '4px',
-                background: '#5c4400',
-                backgroundImage: 'url(Images/global-button-back.png)',
-                backgroundRepeat: 'repeat-x',
-                color: '#fff',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                fontFamily: 'Arial, Helvetica, sans-serif'
-            });
-            closeBtn.onclick = () => box.remove();
-
-            Object.assign(box.style, {
-                position: 'fixed',
-                top: '20px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                backgroundColor: '#fff3cd',
-                color: '#5c4400',
-                padding: '15px 25px',
-                borderRadius: '10px',
-                fontSize: '15px',
-                fontFamily: 'Segoe UI, sans-serif',
-                fontWeight: '500',
-                zIndex: '99999',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-                maxWidth: '90%',
-                textAlign: 'center'
-            });
-
-            box.appendChild(header);
-            box.appendChild(text);
-            box.appendChild(closeBtn);
-            document.body.appendChild(box);
-        }
-
-        function scanPrimaryBank() {
-            const primaryField = document.querySelector(CONFIG.primaryBankSelector);
-            if (!primaryField) {
-                console.log('EPB scan: primaryField NOT FOUND');
-                return null;
-            }
-
-            const rawText = primaryField.textContent.trim();
-            const upper = rawText.toUpperCase();
-            const normalized = ` ${upper.replace(/\s+/g, ' ')} `;
-
-            const isDangerous = DANGEROUS_BANKS.some(bank => normalized.includes(bank));
-
-            console.log('EPB scan:', rawText, '| dangerous =', isDangerous);
-
-            return {
-                isDangerous,
-                fullText: rawText
-            };
-        }
-
-        function checkAndWarn() {
-            const result = scanPrimaryBank();
-            if (!result) return;
-
-            const { isDangerous, fullText } = result;
-
-            if (!isDangerous) {
-                // reset tracker if bank is safe
-                lastDangerousName = null;
-                return;
-            }
-
-            const currentName = fullText;
-
-            // first ever dangerous OR changed dangerous bank name -> show popup
-            if (lastDangerousName === null || lastDangerousName !== currentName) {
-                const title = 'Probably Early Pay Bank!';
-                const items = [
-                    'This bank may show payroll one day earlier than it actually settles.',
-                    `Bank name: ${currentName}`
-                ];
-                showStyledPopup(title, items, false);
-                lastDangerousName = currentName;
-            }
-        }
-
-        function initObserver() {
-            const observer = new MutationObserver(() => {
-                setTimeout(checkAndWarn, 100);
-            });
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true,
-                characterData: true
-            });
-        }
-
-        function init() {
-            console.log('EPB: init');
-            setTimeout(checkAndWarn, 800);
-            initObserver();
-        }
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-        } else {
-            init();
-        }
-    })();
 }
 
 
