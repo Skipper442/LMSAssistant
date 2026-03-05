@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for UW (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.61
+// @version      2.62
 // @description  Extended version of "LMS Assistant". With additional modules and control panel
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -26,14 +26,11 @@
 (function () {
     'use strict';
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.61";
+    const CURRENT_VERSION = "2.62";
 
 const changelog = [
-  "🆕 - Slack DM MODULE (in one click opens your chat with the agent). - 🆕",
-  "How to use: On the first click, wait for the authorization popup (can take up to ~10 seconds).",
-  "On the next page click \"Allow\" to authorize.",
-  "After you allow access, close the confirmation page and click the Slack DM button again to open the chat.",
-  "If nothing happens: make sure Slack desktop/app is installed and you are logged into the correct workspace."
+  "Changed tresholds in Overpaid Module, from 10% to 20% ",
+  "Fixed Loyalty points module"
 ];
 
 
@@ -2606,7 +2603,7 @@ if (MODULES.loyaltyRefi) {
             if (!activeLoanId) return false;
 
             const span = root.querySelector(
-                `#loan_${activeLoanId} > table.ProfileSectionTable > tbody > tr:nth-child(10) > td:nth-child(2) > span`
+                `#loan_${activeLoanId} > table.ProfileSectionTable > tbody > tr:nth-child(11) > td:nth-child(2) > span`
             );
             if (!span) return false;
 
@@ -3066,7 +3063,7 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
             percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
             percentageElement.classList.add('loan-comparison-tooltip');
 
-            if (percentage > 10) {
+            if (percentage > 20) {
                 if (payments < 3 && !status.includes("Paid in Full")) {
                     percentageElement.style.color = '#de9d1b';
                     percentageElement.title = "Not enough payments made for potential refinancing.";
