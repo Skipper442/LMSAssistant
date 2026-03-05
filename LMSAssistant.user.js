@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LMS Assistant PRO for Collections (GitHub)
 // @namespace    http://tampermonkey.net/
-// @version      2.4
+// @version      2.42
 // @description  LMS Assistant PRO with Collections-specific modules only
 // @match        https://apply.creditcube.com/*
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
@@ -26,14 +26,10 @@
     'use strict';
 
 // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.4";
+    const CURRENT_VERSION = "2.42";
 
 const changelog = [
-  "🆕 - APR AutoFix MODULE (Payment Plan) - 🆕",
-  "What it does: After you submit a Payment Plan, the script checks the loan on CustomerDetails.",
-  "If APR is 0% and the loan has Payment Plan status, it updates APR to the Disclosed APR automatically.",
-  "Success popup: \"APR was updated to the disclosed rate as of now ({APR}%).\"",
-  "If APR change is blocked by extension-period restriction, it creates a Follow-up on the extension end date and shows a warning popup."
+  "Fixed APR module"
 ];
 
 
@@ -1247,7 +1243,7 @@ if (MODULES.aprAutoFix && (location.href.includes('PaymentPlan.aspx') || locatio
   };
 
   const qcAprAutoFix_getAprTd = () => (
-    getElement('table.ProfileSectionTable tr:nth-child(12) td:nth-child(2)') ||
+    getElement('table.ProfileSectionTable tr:nth-child(13) td:nth-child(2)') ||
     Array.from(getElements('td')).find((td) => (td.textContent || '').includes('Disclosed APR'))
   );
 
