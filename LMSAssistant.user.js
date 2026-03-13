@@ -1822,8 +1822,8 @@ if (MODULES.slackDM && location.href.includes("CustomerDetails.aspx")) {
           const fullName = toUpper(safeText('#maincontent_Span_Name'));
 
 
-          const sep12 = settings.triggerPII.skipSecondCell ? '\t\t' : '\t';
-          const tsv = state + sep12 + loanId + '\t' + fullName;
+          const tsv = state + '\t' + loanId + '\t' + fullName;
+
 
           const ok = await copyText(tsv);
           showPopup(ok ? "✅ Trigger PII copied (TSV)" : "❌ Clipboard copy failed", ok ? "success" : "error");
