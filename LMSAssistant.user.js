@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.51
+// @version      1.52
 // @description  LMS Assistant PRO with Back Office modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -28,10 +28,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.51";
+    const CURRENT_VERSION = "1.52";
 
 const changelog = [
-  "Changed tresholds in Overpaid Module, from 10% to 20% "
+  "Changed pasting for Trigger PII button "
 ];
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
