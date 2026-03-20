@@ -2,13 +2,14 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.53
+// @version      1.54
 // @description  LMS Assistant PRO with Back Office modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
 // @match        https://portal.decisionlogic.com/CreateRequest.aspx*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
+// @grant        GM_openInTab
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
 // @grant        GM_setValue
@@ -28,10 +29,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.53";
+    const CURRENT_VERSION = "1.54";
 
 const changelog = [
-  "Changed pasting for Trigger PII button "
+  "NEW MODULE - BULK OPEN TABS (Lets you open multiple tabs at once with a single click for some specific reports only) "
 ];
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -106,6 +107,7 @@ const MODULES = {
   maxExposure: true,
   overpaidCheck: true,
   slackDM: true,
+  bulkOpenTabs: true,
   crmStatusCleaner: true
 };
 
@@ -118,6 +120,7 @@ const MODULE_LABELS = {
   maxExposure: 'Max Exposure',
   overpaidCheck: 'Overpaid Check',
   slackDM: 'Slack DM',
+  bulkOpenTabs: 'Bulk Open Tabs',
   crmStatusCleaner: 'Loan Status Cleaner'
 };
 
@@ -131,6 +134,7 @@ const MODULE_DESCRIPTIONS = {
   maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
   overpaidCheck: "Checks overpaid status and options for potential refinance",
   slackDM: "Open 1:1 Slack DM from LMS",
+  bulkOpenTabs: 'Adds controls to open multiple customers from report pages in tab order',
   crmStatusCleaner: 'Reduces the list of loan statuses'
 };
 
@@ -1291,6 +1295,297 @@ if (MODULES.ibvShortener && location.href.includes("PreviewLetter.aspx")) {
         waitForButtonAndInject();
     }
 }
+
+
+/*** ============ Bulk Open Tabs ============ ***/
+if (
+    MODULES.bulkOpenTabs &&
+    (
+        location.href.includes("/reports/LoansReport.aspx") ||
+        location.href.includes("/reports/FollowUpsReport.aspx")
+    )
+) {
+    const SCRIPT_ID = 'cc_bulk_open_tabs_v1_6';
+    const OPEN_DELAY_MS = 120;
+    let isOpening = false;
+
+    const $ = (sel, root = document) => root.querySelector(sel);
+    const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+    const notify = (msg) => {
+        if (typeof window.showAlert === 'function') window.showAlert(msg, null, false);
+        else alert(msg);
+    };
+
+    const setStatus = (text, type = '') => {
+        const el = $('#ccBulkOpenStatus');
+        if (!el) return;
+
+        el.textContent = text;
+        el.className = '';
+        if (type) el.classList.add(type);
+    };
+
+    const getCustomerUrls = () => {
+        const table = $('table.DataTable.FixedHeader') || $('table.DataTable') || $('table');
+        if (!table) return [];
+
+        const seen = new Set();
+
+        return $$('tbody a[href*="CustomerDetails.aspx?customerid="]', table)
+            .map(a => a.href)
+            .filter(Boolean)
+            .filter(url => {
+                if (seen.has(url)) return false;
+                seen.add(url);
+                return true;
+            });
+    };
+
+    const parseCount = (value) => {
+        const n = parseInt(String(value || '').replace(/[^\d]/g, ''), 10);
+        return Number.isFinite(n) ? n : 0;
+    };
+
+    const openCustomers = async (count) => {
+        if (isOpening) return;
+
+        const urls = getCustomerUrls();
+        const total = urls.length;
+
+        if (!total) {
+            notify('No customers found in the table.');
+            setStatus('No customers found.', 'warn');
+            return;
+        }
+
+        if (count <= 0) {
+            notify('Enter a number greater than 0.');
+            setStatus('Enter N > 0.', 'warn');
+            return;
+        }
+
+        if (count > total) {
+            notify(`Only ${total} customer(s) are in the list.\nPlease enter a number up to ${total}.`);
+            setStatus(`Only ${total} in the list.`, 'warn');
+            return;
+        }
+
+        isOpening = true;
+        setStatus(`Opening ${count} tab(s)...`);
+
+        try {
+            for (let i = count - 1; i >= 0; i--) {
+                GM_openInTab(urls[i], { active: false, insert: true, setParent: true });
+                await new Promise(resolve => setTimeout(resolve, OPEN_DELAY_MS));
+            }
+
+            setStatus(`Done: opened ${count} tab(s).`, 'ok');
+        } catch {
+            setStatus('Some tabs may have been blocked.', 'warn');
+        } finally {
+            isOpening = false;
+        }
+    };
+
+    const injectStyles = () => {
+        if (document.getElementById(`${SCRIPT_ID}_style`)) return;
+
+        const style = document.createElement('style');
+        style.id = `${SCRIPT_ID}_style`;
+        style.textContent = `
+            #${SCRIPT_ID}{
+                margin: 10px 0 6px;
+                padding: 10px 12px;
+                border: 1px solid #d7d7d7;
+                background: #fff;
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+
+            #${SCRIPT_ID} .lbl{
+                font-weight: 700;
+                color: #333;
+            }
+
+            #${SCRIPT_ID} .inp{
+                width: 92px;
+                height: 30px;
+                padding: 0 10px;
+                border: 1px solid #cfcfcf;
+                border-radius: 8px;
+                font-size: 12px;
+                color: #111;
+                background: #fff;
+                outline: none;
+            }
+
+            #${SCRIPT_ID} .inp:focus{
+                border-color: #7aa7ff;
+                box-shadow: 0 0 0 2px rgba(122,167,255,0.25);
+            }
+
+            #${SCRIPT_ID} .abtn{
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                height: 30px;
+                padding: 0 12px;
+                border-radius: 8px;
+                text-decoration: none !important;
+                cursor: pointer;
+                user-select: none;
+            }
+
+            #${SCRIPT_ID} .divider{
+                width: 1px;
+                height: 22px;
+                background: #d9d9d9;
+                margin: 0 4px;
+            }
+
+            #ccBulkOpenStatus{
+                margin-left: auto;
+                font-size: 12px;
+                color: #555;
+                padding: 5px 10px;
+                border-radius: 999px;
+                border: 1px solid #e6e6e6;
+                background: #fafafa;
+                max-width: 680px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            #ccBulkOpenStatus.ok{
+                color: #1f6f2a;
+                border-color: rgba(31,111,42,.25);
+                background: rgba(34,177,76,.12);
+            }
+
+            #ccBulkOpenStatus.warn{
+                color: #8a5a00;
+                border-color: rgba(255,127,39,.25);
+                background: rgba(255,127,39,.12);
+            }
+        `;
+        document.head.appendChild(style);
+    };
+
+    const makeButton = (label, handler, className = 'AButton abtn', tag = 'a') => {
+        const el = document.createElement(tag);
+
+        if (tag === 'button') el.type = 'button';
+        if (tag === 'a') el.href = 'javascript:void(0)';
+
+        el.className = className;
+        el.textContent = label;
+
+        el.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            handler();
+        });
+
+        return el;
+    };
+
+    const getMountPoint = () => {
+        const isFollowUps = location.pathname.endsWith('/reports/FollowUpsReport.aspx');
+
+        if (isFollowUps) {
+            const followUpsAnchor =
+                $('table.DataTable.FixedHeader') ||
+                $('table.DataTable') ||
+                $('table[id*="gv"]') ||
+                $('table[id*="Grid"]');
+
+            if (followUpsAnchor?.parentElement) {
+                return {
+                    parent: followUpsAnchor.parentElement,
+                    anchor: followUpsAnchor
+                };
+            }
+        }
+
+        const defaultAnchor = $('.Message');
+        if (defaultAnchor?.parentElement) {
+            return {
+                parent: defaultAnchor.parentElement,
+                anchor: defaultAnchor
+            };
+        }
+
+        return null;
+    };
+
+    const mountUI = () => {
+        if (document.getElementById(SCRIPT_ID)) return true;
+
+        const mountPoint = getMountPoint();
+        if (!mountPoint) return false;
+
+        injectStyles();
+
+        const bar = document.createElement('div');
+        bar.id = SCRIPT_ID;
+
+        const input = document.createElement('input');
+        input.className = 'inp';
+        input.type = 'number';
+        input.min = '1';
+        input.step = '1';
+        input.placeholder = 'N';
+        input.id = 'ccBulkOpenN';
+
+        bar.append(
+            Object.assign(document.createElement('span'), {
+                className: 'lbl',
+                textContent: 'Open tabs:'
+            }),
+            input,
+            makeButton('Open', () => openCustomers(parseCount(input.value))),
+            makeButton('Clear', () => {
+                input.value = '';
+                input.focus();
+                setStatus('Cleared.');
+            }),
+            Object.assign(document.createElement('div'), {
+                className: 'divider'
+            }),
+            makeButton('Open 5', () => openCustomers(5)),
+            makeButton('Open 10', () => openCustomers(10)),
+            makeButton('Open 15', () => openCustomers(15)),
+            makeButton('Open 20', () => openCustomers(20)),
+            makeButton('Open All', () => openCustomers(getCustomerUrls().length)),
+            Object.assign(document.createElement('div'), {
+                id: 'ccBulkOpenStatus',
+                textContent: 'Ready.'
+            })
+        );
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                openCustomers(parseCount(input.value));
+            }
+        });
+
+        mountPoint.parent.insertBefore(bar, mountPoint.anchor);
+        return true;
+    };
+
+    const initBulkOpenTabs = (retries = 30) => {
+        if (mountUI()) return;
+        if (retries > 0) setTimeout(() => initBulkOpenTabs(retries - 1), 300);
+    };
+
+    initBulkOpenTabs();
+}
+
 
 
 /*** ============ CC Slack DM Helper ============ ***/
