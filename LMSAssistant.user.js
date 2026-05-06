@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.32
+// @version      2.33
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -28,10 +28,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.32";
+    const CURRENT_VERSION = "2.33";
 
 const changelog = [
-  "Early pay module hotfix "
+  "Hiding the side menu on the customer page "
 ];
 
 
@@ -430,6 +430,105 @@ if (MODULES.lmsAssistant) {
         'MP': 'Pacific/Guam','PR': 'America/Puerto_Rico','VI': 'America/Puerto_Rico'
     };
 
+    // ==== ЛОГІКА ЛІВОГО МЕНЮ (toggle) ====
+
+    const MENU_STORAGE_KEY = 'cc_left_menu_hidden'; // "true"/"false"
+
+    function readMenuHidden() {
+        const v = localStorage.getItem(MENU_STORAGE_KEY);
+        return v === 'true';
+    }
+
+    function writeMenuHidden(val) {
+        localStorage.setItem(MENU_STORAGE_KEY, val ? 'true' : 'false');
+    }
+
+    function applyMenuState(hidden, nav, main, btn) {
+        const table = nav.closest('table');
+
+        if (hidden) {
+            nav.style.display = 'none';
+            main.colSpan = 2;
+            main.classList.add('expanded-main');
+
+            if (table) {
+                table.style.width = '100%';
+                table.style.maxWidth = '100%';
+                table.style.marginLeft = '0';
+                table.style.marginRight = '0';
+            }
+
+            btn.textContent = '≫';
+        } else {
+            nav.style.display = 'table-cell';
+            main.colSpan = 1;
+            main.classList.remove('expanded-main');
+
+            if (table) {
+                table.style.width = '';
+                table.style.maxWidth = '';
+                table.style.marginLeft = '';
+                table.style.marginRight = '';
+            }
+
+            btn.textContent = '≪';
+        }
+    }
+
+    function initLeftMenuToggle() {
+        const nav = document.querySelector('#ctl00 > table > tbody > tr > td.PageNavigation');
+        const main = document.querySelector('#ctl00 > table > tbody > tr > td.PageGradeRight');
+        if (!nav || !main) return;
+
+        // стилі додаємо один раз
+        if (!document.querySelector('#cc-left-menu-toggle-style')) {
+            const style = document.createElement('style');
+            style.id = 'cc-left-menu-toggle-style';
+            style.textContent = `
+                td.PageGradeRight {
+                    transition: width 0.2s ease;
+                }
+                td.PageGradeRight.expanded-main {
+                    width: 100%;
+                }
+                #nav-toggle-btn {
+                    position: fixed;
+                    top: 50%;
+                    left: 0;
+                    transform: translateY(-50%);
+                    z-index: 9999;
+                    padding: 4px 6px;
+                    background: #333;
+                    color: #fff;
+                    cursor: pointer;
+                    font-size: 12px;
+                    border-radius: 0 4px 4px 0;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // уникаємо дублювання кнопки
+        let btn = document.querySelector('#nav-toggle-btn');
+        if (!btn) {
+            btn = document.createElement('div');
+            btn.id = 'nav-toggle-btn';
+            document.body.appendChild(btn);
+        }
+
+        let hidden = readMenuHidden();
+
+        applyMenuState(hidden, nav, main, btn);
+
+        btn.onclick = () => {
+            hidden = !hidden;
+            applyMenuState(hidden, nav, main, btn);
+            writeMenuHidden(hidden);
+        };
+    }
+
+    // ====== Існуючий функціонал Bria / попапів / репортів ======
+
     function getLocalTime(state) {
         const currTime = new Date();
         return currTime.toLocaleTimeString('en-US', { timeZone: tzData[state], hour12: false });
@@ -546,7 +645,7 @@ if (MODULES.lmsAssistant) {
             const htmlText = await resp.text();
 
             const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlText, 'text/html'); // [web:46][web:49]
+            const doc = parser.parseFromString(htmlText, 'text/html');
 
             const freqTypeSelect = doc.querySelector('#maincontent_Loan_PaymentScheduleFrequencyType');
             if (!freqTypeSelect) return;
@@ -595,6 +694,9 @@ if (MODULES.lmsAssistant) {
 
     if (location.href.includes('CustomerDetails.aspx?')) {
         togglepin();
+
+        // ініціалізація toggle лівого меню на сторінці клієнта
+        initLeftMenuToggle();
 
         const observer = new MutationObserver(() => {
             const custCell = document.querySelector('#ContactSection .ProfileSectionTable tbody tr:nth-child(2) td:nth-child(4)');
@@ -731,7 +833,6 @@ if (MODULES.lmsAssistant) {
         });
     }
 }
-
 
 
     /*** ============ Email/TXT Category Filter ============ ***/
