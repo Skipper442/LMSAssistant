@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.56
+// @version      1.57
 // @description  LMS Assistant PRO with Back Office modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -31,7 +31,7 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.56";
+    const CURRENT_VERSION = "1.57";
 
 const changelog = [
   "NEW MODULE - GMAIL TO CRM (Lets you search customers by the currently opened Gmail email. And open the matched customer directly) "
@@ -780,7 +780,8 @@ if (MODULES.gmailCrmOpener && location.href.includes('mail.google.com')) {
             excludedDomains: ['creditcube.com', 'creditsense.ai'],
             buttonClass: 'tm-open-crm-header-btn',
             toolbarSelector: '.bHJ',
-            retryDelayMs: 120
+            retryDelayMs: 120,
+            crmAccessProfile: 'backOfficeRegional'
         };
 
         const FIELD_KEYS = {
@@ -953,8 +954,8 @@ if (MODULES.gmailCrmOpener && location.href.includes('mail.google.com')) {
 
             fields[FIELD_KEYS.sortColumnId] = extractInputValue(html, FIELD_KEYS.sortColumnId) || '0';
             fields[FIELD_KEYS.sortDirection] = extractInputValue(html, FIELD_KEYS.sortDirection) || '0';
-            fields[FIELD_KEYS.regionDropDown] = extractSelectedOptionValue(html, FIELD_KEYS.regionDropDown) || '';
-            fields[FIELD_KEYS.storeDropDown] = extractSelectedOptionValue(html, FIELD_KEYS.storeDropDown) || '';
+            fields[FIELD_KEYS.regionDropDown] = extractSelectedOptionValue(html, FIELD_KEYS.regionDropDown);
+            fields[FIELD_KEYS.storeDropDown] = extractSelectedOptionValue(html, FIELD_KEYS.storeDropDown);
             fields[FIELD_KEYS.storeInactiveState] = extractInputValue(html, FIELD_KEYS.storeInactiveState) || '';
             fields[FIELD_KEYS.storeInactiveValues] = extractInputValue(html, FIELD_KEYS.storeInactiveValues) || '3';
             fields[FIELD_KEYS.createdDateFrom] = extractInputValue(html, FIELD_KEYS.createdDateFrom) || '';
@@ -987,6 +988,50 @@ if (MODULES.gmailCrmOpener && location.href.includes('mail.google.com')) {
             return fields;
         }
 
+        function applyAccessProfile(fields) {
+            if (CONFIG.crmAccessProfile === 'backOfficeRegional') {
+                fields[FIELD_KEYS.sortColumnId] = fields[FIELD_KEYS.sortColumnId] || '0';
+                fields[FIELD_KEYS.sortDirection] = fields[FIELD_KEYS.sortDirection] || '0';
+
+                fields[FIELD_KEYS.storeInactiveState] = fields[FIELD_KEYS.storeInactiveState] || '';
+                fields[FIELD_KEYS.storeInactiveValues] = '3';
+
+                fields[FIELD_KEYS.createdDateFrom] = fields[FIELD_KEYS.createdDateFrom] || '';
+                fields[FIELD_KEYS.createdDateTo] = fields[FIELD_KEYS.createdDateTo] || '';
+                fields[FIELD_KEYS.firstName] = fields[FIELD_KEYS.firstName] || '';
+                fields[FIELD_KEYS.lastName] = fields[FIELD_KEYS.lastName] || '';
+                fields[FIELD_KEYS.ssn0] = fields[FIELD_KEYS.ssn0] || '';
+                fields[FIELD_KEYS.ssn1] = fields[FIELD_KEYS.ssn1] || '';
+                fields[FIELD_KEYS.ssn2] = fields[FIELD_KEYS.ssn2] || '';
+                fields[FIELD_KEYS.customerIdSingle] = fields[FIELD_KEYS.customerIdSingle] || '';
+                fields[FIELD_KEYS.customerIdMulti] = fields[FIELD_KEYS.customerIdMulti] || '';
+                fields[FIELD_KEYS.loanIdSingle] = fields[FIELD_KEYS.loanIdSingle] || '';
+                fields[FIELD_KEYS.loanIdMulti] = fields[FIELD_KEYS.loanIdMulti] || '';
+                fields[FIELD_KEYS.abaSingle] = fields[FIELD_KEYS.abaSingle] || '';
+                fields[FIELD_KEYS.abaValueSingle] = fields[FIELD_KEYS.abaValueSingle] || '';
+                fields[FIELD_KEYS.bankAccountNumber] = fields[FIELD_KEYS.bankAccountNumber] || '';
+                fields[FIELD_KEYS.employer] = fields[FIELD_KEYS.employer] || '';
+                fields[FIELD_KEYS.phone1] = fields[FIELD_KEYS.phone1] || '';
+                fields[FIELD_KEYS.phone2] = fields[FIELD_KEYS.phone2] || '';
+                fields[FIELD_KEYS.phone3] = fields[FIELD_KEYS.phone3] || '';
+                fields[FIELD_KEYS.address] = fields[FIELD_KEYS.address] || '';
+                fields[FIELD_KEYS.city] = fields[FIELD_KEYS.city] || '';
+                fields[FIELD_KEYS.state] = fields[FIELD_KEYS.state] || '';
+                fields[FIELD_KEYS.marketingTextMessages] = 'all';
+                fields[FIELD_KEYS.marketingPhone] = 'all';
+                fields[FIELD_KEYS.customField] = fields[FIELD_KEYS.customField] || '';
+                fields[FIELD_KEYS.customFieldId] = '1';
+                fields[FIELD_KEYS.customFieldType] = '1';
+
+                // Ключовий адаптер саме під BackOffice (Regional):
+                // не відправляємо dropdown-и взагалі, щоб не тригерити DropDownList.LoadPostData validation
+                delete fields[FIELD_KEYS.regionDropDown];
+                delete fields[FIELD_KEYS.storeDropDown];
+            }
+
+            return fields;
+        }
+
         function applyManualSubmitShape(fields, email) {
             fields[FIELD_KEYS.email] = email;
             fields[FIELD_KEYS.chkActive] = 'on';
@@ -998,13 +1043,19 @@ if (MODULES.gmailCrmOpener && location.href.includes('mail.google.com')) {
         async function buildReportFormPayload(email) {
             const html = await fetchReportPage();
             const actionUrl = absoluteUrl(extractFormAction(html), CONFIG.reportUrl);
-            const fields = collectFieldsFromHtml(html);
+            let fields = collectFieldsFromHtml(html);
 
             if (!fields.__VIEWSTATE || !fields.__EVENTVALIDATION) {
                 throw new Error('Missing __VIEWSTATE or __EVENTVALIDATION');
             }
 
+            fields = applyAccessProfile(fields);
             applyManualSubmitShape(fields, email);
+
+            const encoded = new URLSearchParams(fields).toString();
+            log('Payload profile:', CONFIG.crmAccessProfile);
+            log('Payload preview:', fields);
+            log('Encoded payload:', encoded);
 
             return { actionUrl, fields };
         }
@@ -1412,7 +1463,6 @@ if (MODULES.gmailCrmOpener && location.href.includes('mail.google.com')) {
         }
     }
 }
-
 /*** ============ Overpaid check module ============ ***/
 
 if (MODULES.overpaidCheck && location.href.includes('CustomerHistory')) {
