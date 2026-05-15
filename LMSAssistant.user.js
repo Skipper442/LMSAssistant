@@ -2,11 +2,12 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.54
+// @version      1.56
 // @description  LMS Assistant PRO with Back Office modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
 // @match        https://portal.decisionlogic.com/CreateRequest.aspx*
+// @match        https://mail.google.com/*
 // @updateURL    https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
 // @downloadURL  https://github.com/Skipper442/LMSAssistant/raw/refs/heads/BackOffice/LMSAssistant.user.js
 // @grant        GM_openInTab
@@ -15,6 +16,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
+// @connect      apply.creditcube.com
 // @connect      api.creditsense.ai
 // @connect      docs.google.com
 // @connect      sheets.googleapis.com
@@ -29,10 +31,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.54";
+    const CURRENT_VERSION = "1.56";
 
 const changelog = [
-  "NEW MODULE - BULK OPEN TABS (Lets you open multiple tabs at once with a single click for some specific reports only) "
+  "NEW MODULE - GMAIL TO CRM (Lets you search customers by the currently opened Gmail email. And open the matched customer directly) "
 ];
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -108,7 +110,8 @@ const MODULES = {
   overpaidCheck: true,
   slackDM: true,
   bulkOpenTabs: true,
-  crmStatusCleaner: true
+  crmStatusCleaner: true,
+  gmailCrmOpener: true
 };
 
 const MODULE_LABELS = {
@@ -121,7 +124,8 @@ const MODULE_LABELS = {
   overpaidCheck: 'Overpaid Check',
   slackDM: 'Slack DM',
   bulkOpenTabs: 'Bulk Open Tabs',
-  crmStatusCleaner: 'Loan Status Cleaner'
+  crmStatusCleaner: 'Loan Status Cleaner',
+  gmailCrmOpener: 'Gmail To LMS Search'
 };
 
 const MODULE_DESCRIPTIONS = {
@@ -132,10 +136,11 @@ const MODULE_DESCRIPTIONS = {
   lmsToDlAutofill: 'Adds buttons to copy customer info for 3rd party registration and verification',
   remarkFilter: 'Hides unnecessary loan remarks, keeps only critical ones',
   maxExposure: 'Adds button to allow you calculate Max Exposure directly in LMS ',
-  overpaidCheck: "Checks overpaid status and options for potential refinance",
-  slackDM: "Open 1:1 Slack DM from LMS",
+  overpaidCheck: 'Checks overpaid status and options for potential refinance',
+  slackDM: 'Open 1:1 Slack DM from LMS',
   bulkOpenTabs: 'Adds controls to open multiple customers from report pages in tab order',
-  crmStatusCleaner: 'Reduces the list of loan statuses'
+  crmStatusCleaner: 'Reduces the list of loan statuses',
+  gmailCrmOpener: 'Adds a Gmail header button to search customer by opened email and open the matched customer directly'
 };
 
 
@@ -762,7 +767,651 @@ if (MODULES.lmsAssistant) {
     }
 }
 
+/*** ============ Gmail -> CRM direct customer opener module ============ ***/
 
+if (MODULES.gmailCrmOpener && location.href.includes('mail.google.com')) {
+    'use strict';
+
+    {
+        const CONFIG = {
+            reportUrl: 'https://apply.creditcube.com/plm.net/reports/CustomersReport.aspx?reportpreset=search',
+            debug: false,
+            fallbackViewStateGenerator: '0AF331F4',
+            excludedDomains: ['creditcube.com', 'creditsense.ai'],
+            buttonClass: 'tm-open-crm-header-btn',
+            toolbarSelector: '.bHJ',
+            retryDelayMs: 120
+        };
+
+        const FIELD_KEYS = {
+            email: 'ctl00$maincontent$Email',
+            chkActive: 'ctl00$maincontent$Chk_Active',
+            chkInactive: 'ctl00$maincontent$Chk_Inactive',
+            chkNoLoans: 'ctl00$maincontent$Chk_NoLoans',
+            btnSearch: 'ctl00$maincontent$Btn_Search',
+
+            sortColumnId: 'ctl00$maincontent$SortColumnId',
+            sortDirection: 'ctl00$maincontent$SortDirection',
+            regionDropDown: 'ctl00$maincontent$Region$DropDownListWithInactive',
+            storeDropDown: 'ctl00$maincontent$Store$DropDownListWithInactive',
+            storeInactiveState: 'ctl00$maincontent$Store$InactiveState',
+            storeInactiveValues: 'ctl00$maincontent$Store$InactiveValues',
+            createdDateFrom: 'ctl00$maincontent$CreatedDateFrom$Date',
+            createdDateTo: 'ctl00$maincontent$CreatedDateTo$Date',
+            firstName: 'ctl00$maincontent$FirstName',
+            lastName: 'ctl00$maincontent$LastName',
+            ssn0: 'ctl00$maincontent$Ssn$SSN_0',
+            ssn1: 'ctl00$maincontent$Ssn$SSN_1',
+            ssn2: 'ctl00$maincontent$Ssn$SSN_2',
+            customerIdSingle: 'ctl00$maincontent$CustomerId_Singleline',
+            customerIdMulti: 'ctl00$maincontent$CustomerId_Multiline',
+            loanIdSingle: 'ctl00$maincontent$LoanId_Singleline',
+            loanIdMulti: 'ctl00$maincontent$LoanId_Multiline',
+            abaSingle: 'ctl00$maincontent$AbaNumber$Aba_Single',
+            abaValueSingle: 'ctl00$maincontent$AbaNumber$AbaValue_Single',
+            bankAccountNumber: 'ctl00$maincontent$BankAccountNumber',
+            employer: 'ctl00$maincontent$Employer',
+            phone1: 'ctl00$maincontent$Phone_1',
+            phone2: 'ctl00$maincontent$Phone_2',
+            phone3: 'ctl00$maincontent$Phone_3',
+            address: 'ctl00$maincontent$Address',
+            city: 'ctl00$maincontent$City',
+            state: 'ctl00$maincontent$State',
+            marketingTextMessages: 'ctl00$maincontent$MarketingTextMessages',
+            marketingPhone: 'ctl00$maincontent$MarketingPhone',
+            customField: 'ctl00$maincontent$CustomFieldsRepeater$ctl00$CustomField',
+            customFieldId: 'ctl00$maincontent$CustomFieldsRepeater$ctl00$CustomFieldId',
+            customFieldType: 'ctl00$maincontent$CustomFieldsRepeater$ctl00$CustomFieldType'
+        };
+
+        let observerStarted = false;
+
+        function log(...args) {
+            if (CONFIG.debug) console.log('[GM Gmail->CRM]', ...args);
+        }
+
+        function isEmail(text) {
+            return /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test((text || '').trim());
+        }
+
+        function normalizeEmail(text) {
+            return (text || '').trim().replace(/[<>]/g, '');
+        }
+
+        function getDomain(email) {
+            const parts = String(email || '').toLowerCase().split('@');
+            return parts.length === 2 ? parts[1] : '';
+        }
+
+        function isExcludedDomain(email) {
+            const domain = getDomain(email);
+            return CONFIG.excludedDomains.some(excluded =>
+                domain === excluded || domain.endsWith('.' + excluded)
+            );
+        }
+
+        function isVisible(el) {
+            if (!el) return false;
+            const style = window.getComputedStyle(el);
+            return style.display !== 'none' &&
+                   style.visibility !== 'hidden' &&
+                   el.getClientRects().length > 0;
+        }
+
+        function unique(arr) {
+            return [...new Set(arr)];
+        }
+
+        function decodeHtmlEntities(str) {
+            if (!str) return '';
+            return str
+                .replace(/&amp;/g, '&')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>');
+        }
+
+        function absoluteUrl(url, base) {
+            return new URL(url || '', base || location.href).toString();
+        }
+
+        function gmRequest(details) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    ...details,
+                    onload: resolve,
+                    onerror: reject,
+                    ontimeout: reject
+                });
+            });
+        }
+
+        function extractInputValue(html, name) {
+            const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            const patterns = [
+                new RegExp(`<input[^>]*name=["']${escaped}["'][^>]*value=["']([^"']*)["']`, 'i'),
+                new RegExp(`<input[^>]*value=["']([^"']*)["'][^>]*name=["']${escaped}["']`, 'i')
+            ];
+
+            for (const pattern of patterns) {
+                const match = html.match(pattern);
+                if (match) return decodeHtmlEntities(match[1]);
+            }
+
+            return '';
+        }
+
+        function extractSelectedOptionValue(html, selectName) {
+            const escaped = selectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const selectMatch = html.match(
+                new RegExp(`<select[^>]*name=["']${escaped}["'][\\s\\S]*?<\\/select>`, 'i')
+            );
+            if (!selectMatch) return '';
+
+            const selectHtml = selectMatch[0];
+            const selectedMatch =
+                selectHtml.match(/<option[^>]*selected(?:=["'][^"']*["'])?[^>]*value=["']([^"']*)["']/i) ||
+                selectHtml.match(/<option[^>]*value=["']([^"']*)["'][^>]*selected(?:=["'][^"']*["'])?/i);
+
+            return selectedMatch ? decodeHtmlEntities(selectedMatch[1]) : '';
+        }
+
+        function extractFormAction(html) {
+            const match =
+                html.match(/<form[^>]*action=["']([^"']+)["'][^>]*id=["']form1["']/i) ||
+                html.match(/<form[^>]*id=["']form1["'][^>]*action=["']([^"']+)["']/i) ||
+                html.match(/<form[^>]*action=["']([^"']+)["']/i);
+
+            return match ? match[1] : './CustomersReport.aspx?reportpreset=search';
+        }
+
+        async function fetchReportPage() {
+            const res = await gmRequest({
+                method: 'GET',
+                url: CONFIG.reportUrl
+            });
+
+            if (res.status < 200 || res.status >= 300) {
+                throw new Error(`GET report page failed: ${res.status}`);
+            }
+
+            return res.responseText;
+        }
+
+        function collectFieldsFromHtml(html) {
+            const fields = {};
+
+            fields.__VIEWSTATE = extractInputValue(html, '__VIEWSTATE');
+            fields.__EVENTVALIDATION = extractInputValue(html, '__EVENTVALIDATION');
+            fields.__VIEWSTATEGENERATOR =
+                extractInputValue(html, '__VIEWSTATEGENERATOR') || CONFIG.fallbackViewStateGenerator;
+            fields.__EVENTTARGET = '';
+            fields.__EVENTARGUMENT = '';
+            fields.__LASTFOCUS = '';
+
+            fields[FIELD_KEYS.sortColumnId] = extractInputValue(html, FIELD_KEYS.sortColumnId) || '0';
+            fields[FIELD_KEYS.sortDirection] = extractInputValue(html, FIELD_KEYS.sortDirection) || '0';
+            fields[FIELD_KEYS.regionDropDown] = extractSelectedOptionValue(html, FIELD_KEYS.regionDropDown) || '';
+            fields[FIELD_KEYS.storeDropDown] = extractSelectedOptionValue(html, FIELD_KEYS.storeDropDown) || '';
+            fields[FIELD_KEYS.storeInactiveState] = extractInputValue(html, FIELD_KEYS.storeInactiveState) || '';
+            fields[FIELD_KEYS.storeInactiveValues] = extractInputValue(html, FIELD_KEYS.storeInactiveValues) || '3';
+            fields[FIELD_KEYS.createdDateFrom] = extractInputValue(html, FIELD_KEYS.createdDateFrom) || '';
+            fields[FIELD_KEYS.createdDateTo] = extractInputValue(html, FIELD_KEYS.createdDateTo) || '';
+            fields[FIELD_KEYS.firstName] = extractInputValue(html, FIELD_KEYS.firstName) || '';
+            fields[FIELD_KEYS.lastName] = extractInputValue(html, FIELD_KEYS.lastName) || '';
+            fields[FIELD_KEYS.ssn0] = extractInputValue(html, FIELD_KEYS.ssn0) || '';
+            fields[FIELD_KEYS.ssn1] = extractInputValue(html, FIELD_KEYS.ssn1) || '';
+            fields[FIELD_KEYS.ssn2] = extractInputValue(html, FIELD_KEYS.ssn2) || '';
+            fields[FIELD_KEYS.customerIdSingle] = extractInputValue(html, FIELD_KEYS.customerIdSingle) || '';
+            fields[FIELD_KEYS.customerIdMulti] = extractInputValue(html, FIELD_KEYS.customerIdMulti) || '';
+            fields[FIELD_KEYS.loanIdSingle] = extractInputValue(html, FIELD_KEYS.loanIdSingle) || '';
+            fields[FIELD_KEYS.loanIdMulti] = extractInputValue(html, FIELD_KEYS.loanIdMulti) || '';
+            fields[FIELD_KEYS.abaSingle] = extractInputValue(html, FIELD_KEYS.abaSingle) || '';
+            fields[FIELD_KEYS.abaValueSingle] = extractInputValue(html, FIELD_KEYS.abaValueSingle) || '';
+            fields[FIELD_KEYS.bankAccountNumber] = extractInputValue(html, FIELD_KEYS.bankAccountNumber) || '';
+            fields[FIELD_KEYS.employer] = extractInputValue(html, FIELD_KEYS.employer) || '';
+            fields[FIELD_KEYS.phone1] = extractInputValue(html, FIELD_KEYS.phone1) || '';
+            fields[FIELD_KEYS.phone2] = extractInputValue(html, FIELD_KEYS.phone2) || '';
+            fields[FIELD_KEYS.phone3] = extractInputValue(html, FIELD_KEYS.phone3) || '';
+            fields[FIELD_KEYS.address] = extractInputValue(html, FIELD_KEYS.address) || '';
+            fields[FIELD_KEYS.city] = extractInputValue(html, FIELD_KEYS.city) || '';
+            fields[FIELD_KEYS.state] = extractInputValue(html, FIELD_KEYS.state) || '';
+            fields[FIELD_KEYS.marketingTextMessages] = extractInputValue(html, FIELD_KEYS.marketingTextMessages) || 'all';
+            fields[FIELD_KEYS.marketingPhone] = extractInputValue(html, FIELD_KEYS.marketingPhone) || 'all';
+            fields[FIELD_KEYS.customField] = extractInputValue(html, FIELD_KEYS.customField) || '';
+            fields[FIELD_KEYS.customFieldId] = extractInputValue(html, FIELD_KEYS.customFieldId) || '1';
+            fields[FIELD_KEYS.customFieldType] = extractInputValue(html, FIELD_KEYS.customFieldType) || '1';
+
+            return fields;
+        }
+
+        function applyManualSubmitShape(fields, email) {
+            fields[FIELD_KEYS.email] = email;
+            fields[FIELD_KEYS.chkActive] = 'on';
+            fields[FIELD_KEYS.chkInactive] = 'on';
+            fields[FIELD_KEYS.chkNoLoans] = 'on';
+            fields[FIELD_KEYS.btnSearch] = 'Generate Report';
+        }
+
+        async function buildReportFormPayload(email) {
+            const html = await fetchReportPage();
+            const actionUrl = absoluteUrl(extractFormAction(html), CONFIG.reportUrl);
+            const fields = collectFieldsFromHtml(html);
+
+            if (!fields.__VIEWSTATE || !fields.__EVENTVALIDATION) {
+                throw new Error('Missing __VIEWSTATE or __EVENTVALIDATION');
+            }
+
+            applyManualSubmitShape(fields, email);
+
+            return { actionUrl, fields };
+        }
+
+        async function searchCustomerByEmail(email) {
+            const { actionUrl, fields } = await buildReportFormPayload(email);
+
+            const res = await gmRequest({
+                method: 'POST',
+                url: actionUrl,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                data: new URLSearchParams(fields).toString()
+            });
+
+            if (res.status < 200 || res.status >= 300) {
+                throw new Error(`POST search failed: ${res.status}`);
+            }
+
+            return {
+                actionUrl,
+                html: res.responseText,
+                fields
+            };
+        }
+
+        function extractCustomersFoundCount(html) {
+            const match = html.match(/Customers\s+Found:\s*(\d+)/i);
+            return match ? Number(match[1]) : null;
+        }
+
+        function extractCustomerLinks(html, actionUrl) {
+            const regex = /href=["']([^"']*CustomerDetails\.aspx\?customerid=\d+)["']/gi;
+            const links = [];
+            let match;
+
+            while ((match = regex.exec(html)) !== null) {
+                links.push(absoluteUrl(decodeHtmlEntities(match[1]), actionUrl));
+            }
+
+            return unique(links);
+        }
+
+        function openRealCrmReport(actionUrl, fields) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = actionUrl;
+            form.target = '_blank';
+            form.style.display = 'none';
+
+            Object.entries(fields).forEach(([name, value]) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = name;
+                input.value = value ?? '';
+                form.appendChild(input);
+            });
+
+            document.body.appendChild(form);
+            form.submit();
+            form.remove();
+        }
+
+        function getCurrentOpenMessageContainer() {
+            const containers = [...document.querySelectorAll('.adn.ads')].filter(isVisible);
+            return containers.length ? containers[containers.length - 1] : null;
+        }
+
+        function collectEmailCandidatesFromContainer(container) {
+            if (!container) return [];
+
+            const found = [];
+
+            container.querySelectorAll('span.gD[email]').forEach(el => {
+                const val = normalizeEmail(el.getAttribute('email'));
+                if (isEmail(val)) found.push(val);
+            });
+
+            container.querySelectorAll('[email]').forEach(el => {
+                const val = normalizeEmail(el.getAttribute('email'));
+                if (isEmail(val)) found.push(val);
+            });
+
+            container.querySelectorAll('[data-hovercard-id]').forEach(el => {
+                const val = normalizeEmail(el.getAttribute('data-hovercard-id'));
+                if (isEmail(val)) found.push(val);
+            });
+
+            container.querySelectorAll('span.go').forEach(el => {
+                const val = normalizeEmail(el.textContent);
+                if (isEmail(val)) found.push(val);
+            });
+
+            container.querySelectorAll('.gD, .yP, .g2').forEach(el => {
+                const variants = [
+                    normalizeEmail(el.getAttribute('email')),
+                    normalizeEmail(el.getAttribute('data-hovercard-id')),
+                    normalizeEmail(el.textContent)
+                ];
+
+                variants.forEach(val => {
+                    if (isEmail(val)) found.push(val);
+                });
+            });
+
+            return unique(found);
+        }
+
+        function pickBestCustomerEmail(candidates) {
+            const filtered = candidates.filter(email => !isExcludedDomain(email));
+            log('All email candidates:', candidates);
+            log('Filtered customer candidates:', filtered);
+            return filtered[0] || null;
+        }
+
+        function extractEmailFromOpenMessage() {
+            const container = getCurrentOpenMessageContainer();
+
+            if (!container) {
+                log('No open message container found');
+                return { email: null, candidates: [] };
+            }
+
+            const candidates = collectEmailCandidatesFromContainer(container);
+            const picked = pickBestCustomerEmail(candidates);
+
+            log('Picked email:', picked);
+
+            return { email: picked, candidates };
+        }
+
+        function getTooltipText() {
+            const { email, candidates } = extractEmailFromOpenMessage();
+
+            if (email) {
+                return `Open in CRM: ${email}`;
+            }
+
+            if (candidates && candidates.length) {
+                return 'Open CRM report (customer email not found)';
+            }
+
+            return 'Open in CRM';
+        }
+
+        function injectMaterialSymbolsOnce() {
+            if (document.querySelector('#tm-material-symbols-link')) return;
+
+            const link = document.createElement('link');
+            link.id = 'tm-material-symbols-link';
+            link.rel = 'stylesheet';
+            link.href = 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200';
+            document.head.appendChild(link);
+        }
+
+        function injectStylesOnce() {
+            if (document.querySelector('#tm-open-crm-styles')) return;
+
+            const style = document.createElement('style');
+            style.id = 'tm-open-crm-styles';
+            style.textContent = `
+                .${CONFIG.buttonClass} {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 40px;
+                    height: 40px;
+                    min-width: 40px;
+                    padding: 0;
+                    margin: 0 0 0 2px;
+                    border: none;
+                    background: transparent;
+                    border-radius: 20px;
+                    cursor: pointer;
+                    color: #5f6368;
+                    vertical-align: top;
+                    align-self: center;
+                    flex: 0 0 40px;
+                    transform: translateY(-1px);
+                }
+
+                .${CONFIG.buttonClass}:hover {
+                    color: #1a73e8;
+                    background: rgba(26, 115, 232, 0.10);
+                }
+
+                .${CONFIG.buttonClass}:focus-visible {
+                    outline: 2px solid #1a73e8;
+                    outline-offset: 2px;
+                }
+
+                .${CONFIG.buttonClass}[data-state="loading"] {
+                    opacity: 0.7;
+                    cursor: progress;
+                }
+
+                .${CONFIG.buttonClass}[data-state="loading"] .material-symbols-outlined {
+                    animation: tm-crm-spin 0.9s linear infinite;
+                }
+
+                .${CONFIG.buttonClass}[data-state="success"] {
+                    color: #188038;
+                }
+
+                .${CONFIG.buttonClass}[data-state="fallback"] {
+                    color: #b06000;
+                }
+
+                .${CONFIG.buttonClass}[data-state="error"] {
+                    color: #d93025;
+                }
+
+                .${CONFIG.buttonClass} .material-symbols-outlined {
+                    font-family: 'Material Symbols Outlined';
+                    font-weight: normal;
+                    font-style: normal;
+                    font-size: 20px;
+                    line-height: 1;
+                    display: block;
+                    letter-spacing: normal;
+                    text-transform: none;
+                    white-space: nowrap;
+                    word-wrap: normal;
+                    direction: ltr;
+                    -webkit-font-smoothing: antialiased;
+                    font-variation-settings:
+                        'FILL' 0,
+                        'wght' 400,
+                        'GRAD' 0,
+                        'opsz' 24;
+                }
+
+                @keyframes tm-crm-spin {
+                    from { transform: rotate(0deg); }
+                    to { transform: rotate(360deg); }
+                }
+            `;
+
+            document.head.appendChild(style);
+        }
+
+        function createCrmIconNode() {
+            const icon = document.createElement('span');
+            icon.className = 'material-symbols-outlined';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = 'manage_search';
+            return icon;
+        }
+
+        function setButtonState(button, state) {
+            if (!button) return;
+
+            if (!state) {
+                button.removeAttribute('data-state');
+                return;
+            }
+
+            button.setAttribute('data-state', state);
+        }
+
+        function updateCrmButtonTooltip(button) {
+            if (!button) return;
+
+            const tooltip = getTooltipText();
+            button.title = tooltip;
+            button.setAttribute('aria-label', tooltip);
+        }
+
+        function updateAllCrmButtonsTooltip() {
+            document.querySelectorAll(`.${CONFIG.buttonClass}`).forEach(updateCrmButtonTooltip);
+        }
+
+        function createHeaderCrmButton() {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = CONFIG.buttonClass;
+            button.setAttribute('aria-label', 'Open in CRM');
+            button.title = 'Open in CRM';
+            button.appendChild(createCrmIconNode());
+
+            button.addEventListener('click', async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const originalTitle = button.title;
+                const originalAria = button.getAttribute('aria-label') || 'Open in CRM';
+
+                try {
+                    const { email, candidates } = extractEmailFromOpenMessage();
+
+                    setButtonState(button, 'loading');
+                    button.disabled = true;
+
+                    if (!email) {
+                        log('No usable customer email found, falling back to real CRM report');
+
+                        const fallbackEmail = candidates[0] || '';
+                        const { actionUrl, fields } = await buildReportFormPayload(fallbackEmail);
+                        openRealCrmReport(actionUrl, fields);
+                        setButtonState(button, 'fallback');
+                        return;
+                    }
+
+                    button.title = `Searching CRM: ${email}`;
+                    button.setAttribute('aria-label', `Searching CRM for ${email}`);
+
+                    const { actionUrl, html, fields } = await searchCustomerByEmail(email);
+                    const foundCount = extractCustomersFoundCount(html);
+                    const customerLinks = extractCustomerLinks(html, actionUrl);
+
+                    log('Using email:', email);
+                    log('Found count:', foundCount);
+                    log('Customer links:', customerLinks);
+
+                    if (foundCount === 1 && customerLinks.length >= 1) {
+                        window.open(customerLinks[0], '_blank');
+                        setButtonState(button, 'success');
+                        return;
+                    }
+
+                    openRealCrmReport(actionUrl, fields);
+                    setButtonState(button, 'fallback');
+                } catch (e) {
+                    console.error('[GM Gmail->CRM] failed:', e);
+                    setButtonState(button, 'error');
+                    alert(`Failed:\n${e.message}`);
+                } finally {
+                    setTimeout(() => {
+                        button.disabled = false;
+                        button.title = originalTitle;
+                        button.setAttribute('aria-label', originalAria);
+                        updateAllCrmButtonsTooltip();
+                        setButtonState(button, null);
+                    }, 700);
+                }
+            });
+
+            return button;
+        }
+
+        function getHeaderToolbars() {
+            return [...document.querySelectorAll(CONFIG.toolbarSelector)].filter(isVisible);
+        }
+
+        function getRightmostToolbarButton(toolbar) {
+            const buttons = [...toolbar.querySelectorAll('button')].filter(isVisible);
+            return buttons.length ? buttons[buttons.length - 1] : null;
+        }
+
+        function insertButtonsIntoHeaders() {
+            const toolbars = getHeaderToolbars();
+
+            toolbars.forEach(toolbar => {
+                const existing = toolbar.querySelector(`.${CONFIG.buttonClass}`);
+                if (existing) {
+                    updateCrmButtonTooltip(existing);
+                    return;
+                }
+
+                const anchor = getRightmostToolbarButton(toolbar);
+                if (!anchor) return;
+
+                const crmButton = createHeaderCrmButton();
+                anchor.insertAdjacentElement('afterend', crmButton);
+                updateCrmButtonTooltip(crmButton);
+
+                log('CRM button inserted into toolbar', toolbar);
+            });
+        }
+
+        function initHeaderObserver() {
+            if (observerStarted) return;
+            observerStarted = true;
+
+            injectMaterialSymbolsOnce();
+            injectStylesOnce();
+            insertButtonsIntoHeaders();
+            setTimeout(insertButtonsIntoHeaders, CONFIG.retryDelayMs);
+
+            let rafScheduled = false;
+
+            const observer = new MutationObserver(() => {
+                if (rafScheduled) return;
+                rafScheduled = true;
+
+                requestAnimationFrame(() => {
+                    rafScheduled = false;
+                    insertButtonsIntoHeaders();
+                    updateAllCrmButtonsTooltip();
+                    setTimeout(insertButtonsIntoHeaders, CONFIG.retryDelayMs);
+                });
+            });
+
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initHeaderObserver, { once: true });
+        } else {
+            initHeaderObserver();
+        }
+    }
+}
 
 /*** ============ Overpaid check module ============ ***/
 
