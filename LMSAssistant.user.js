@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Back Office (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      1.57
+// @version      1.58
 // @description  LMS Assistant PRO with Back Office modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -31,10 +31,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "1.57";
+    const CURRENT_VERSION = "1.58";
 
 const changelog = [
-  "NEW MODULE - GMAIL TO CRM (Lets you search customers by the currently opened Gmail email. And open the matched customer directly) "
+  "Changed tresholds for overpaid module from 20% to 10% "
 ];
 
     const savedVersion = localStorage.getItem("lms_assistant_version");
@@ -1491,7 +1491,7 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
             percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
             percentageElement.classList.add('loan-comparison-tooltip');
 
-            if (percentage > 20) {
+            if (percentage > 10) {
                 if (payments < 3 && !status.includes("Paid in Full")) {
                     percentageElement.style.color = '#de9d1b';
                     percentageElement.title = "Not enough payments made for potential refinancing.";
