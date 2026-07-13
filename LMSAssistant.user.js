@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.33
+// @version      2.34
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -28,10 +28,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.33";
+    const CURRENT_VERSION = "2.34";
 
 const changelog = [
-  "Hiding the side menu on the customer page "
+  "Changed tresholds for overpaid module from 20% to 10% "
 ];
 
 
@@ -1984,7 +1984,7 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
             percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
             percentageElement.classList.add('loan-comparison-tooltip');
 
-            if (percentage > 20) {
+            if (percentage > 10) {
                 if (payments < 3 && !status.includes("Paid in Full")) {
                     percentageElement.style.color = '#de9d1b';
                     percentageElement.title = "Not enough payments made for potential refinancing.";
