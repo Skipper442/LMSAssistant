@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.34
+// @version      2.38
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -20,6 +20,7 @@
 // @connect      googleusercontent.com
 // @connect      slack.ccwusa.org
 // @connect      slack.com
+// @connect      portal.decisionlogic.com
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -28,10 +29,12 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.34";
+    const CURRENT_VERSION = "2.38";
 
 const changelog = [
-  "Changed tresholds for overpaid module from 20% to 10% "
+
+  "Added DL Follow-Up Status Checker — quick DecisionLogic status verification for LMS Follow-Ups",
+  "  • Thanks to PaulTL for the idea and implementation "
 ];
 
 
@@ -111,10 +114,12 @@ const changelog = [
     overpaidCheck: true,
     crmStatusCleaner: true,
     slackDM: true,
-    earlyPayBank: true
+    earlyPayBank: true,
+    dlFollowUpChecker: true
 };
 
 const MODULE_LABELS = {
+    lmsAssistant: 'LMS Assistant',
     ibvButton: 'IBV Button',
     emailFilter: 'Email Filter',
     copyPaste: 'Copy/Paste',
@@ -125,7 +130,8 @@ const MODULE_LABELS = {
     overpaidCheck: 'Overpaid Check',
     crmStatusCleaner: 'Loan Status Cleaner',
     slackDM: 'Slack DM',
-    earlyPayBank: 'Early Pay Bank'
+    earlyPayBank: 'Early Pay Bank',
+    dlFollowUpChecker: 'DL Follow-Up Checker'
 };
 
 const MODULE_DESCRIPTIONS = {
@@ -139,8 +145,9 @@ const MODULE_DESCRIPTIONS = {
     maxExposure: "Adds button to allow you calculate Max Exposure directly in LMS",
     overpaidCheck: "Checks overpaid status and options for potential refinance",
     crmStatusCleaner: "Reduces the list of loan statuses",
-    slackDM: 'Slack DM',
-    earlyPayBank: "Warns when customer’s primary bank is probably an early pay bank"
+    slackDM: "Opens Slack DM for customer",
+    earlyPayBank: "Warns when customer's primary bank is probably an early pay bank",
+    dlFollowUpChecker: "Quick DecisionLogic status checker for LMS Follow-Ups"
 };
 
 
@@ -834,6 +841,522 @@ if (MODULES.lmsAssistant) {
     }
 }
 
+/*** ============ LMS DL Follow-Up Status Checker ============ ***/
+
+(function () {
+  'use strict';
+
+  const DL_STYLE_ID = 'lms-dl-followup-status-checker-style';
+  const DL_ROW_PROCESSED_ATTR = 'data-dl-followup-checker-processed';
+  const DL_CODE_ATTR = 'data-dl-request-code';
+  const DL_TOOLBAR_ID = 'lms-dl-followup-toolbar';
+
+  const DL_REPORTS_URL = 'https://portal.decisionlogic.com/Reports.aspx';
+  const DL_LOGIN_URL = 'https://portal.decisionlogic.com/Login.aspx';
+  const CRP_REPORT_BASE_URL = 'https://ibv.creditsense.ai/report/DecisionLogic/';
+
+  const DL_STATUS_BY_COLOR = {
+    '#228822': { label: 'Login, Verified', className: 'dl-status-ok' },
+    '#FFBF00': { label: 'Account Error', className: 'dl-status-warning' },
+    '#CC3333': { label: 'Bank Error', className: 'dl-status-error' },
+    '#A0A0A0': { label: 'Started, Not Completed', className: 'dl-status-muted' },
+    '#D0D0D0': { label: 'Not Started', className: 'dl-status-light' }
+  };
+
+  const dlResultCache = new Map();
+  let dlScanTimer = null;
+  let dlIsCheckingAll = false;
+
+  function dlClean(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function dlIsLmsCustomerPage() {
+    return /\/plm\.net\/customers\/CustomerDetails\.aspx/i.test(window.location.href) ||
+      Boolean(document.getElementById('ctl00_FollowUpsLink')) ||
+      Boolean(document.querySelector('.tr-followup'));
+  }
+
+  function dlInjectStyles() {
+    if (document.getElementById(DL_STYLE_ID)) return;
+
+    const style = document.createElement('style');
+    style.id = DL_STYLE_ID;
+    style.textContent = `
+      #${DL_TOOLBAR_ID} {
+        display: none;
+        margin-top: 17px;
+        margin-left: -5px;
+        clear: both;
+        white-space: nowrap;
+        position: relative;
+        top: 7px;
+        left: 0;
+      }
+      #${DL_TOOLBAR_ID}.dl-has-codes { display: block; }
+      .dl-followup-action-cell { white-space: nowrap; padding-left: 4px; }
+      .dl-followup-btn {
+        display: inline-block;
+        padding: 3px 9px;
+        border: 1px solid #777;
+        border-radius: 0;
+        background: #f5f5f5;
+        color: #111 !important;
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.2;
+        text-decoration: none !important;
+        cursor: pointer;
+        user-select: none;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
+      .dl-followup-btn:hover { filter: brightness(0.96); }
+      .dl-followup-btn[aria-disabled="true"] {
+        opacity: 0.65;
+        cursor: default;
+        pointer-events: none;
+      }
+      .dl-followup-open-crp-btn {
+        border-color: #7952b3;
+        background: #f1eafd;
+        color: #4b2c7a !important;
+        box-shadow: 0 0 0 1px rgba(121, 82, 179, 0.14);
+      }
+      .dl-followup-open-crp-btn:hover {
+        background: #e6d8fb;
+        border-color: #4b2c7a;
+      }
+      .dl-followup-check-all-btn {
+        box-sizing: border-box;
+        width: 82px;
+        min-width: 82px;
+        padding-left: 2px;
+        padding-right: 2px;
+        text-align: center;
+        border-color: #0d6efd;
+        background: #e7f1ff;
+        color: #084298 !important;
+        box-shadow: 0 0 0 1px rgba(13, 110, 253, 0.16);
+      }
+      .dl-followup-check-all-btn:hover {
+        background: #d8eaff;
+        border-color: #084298;
+      }
+      .dl-followup-status-pill {
+        display: inline-block;
+        box-sizing: border-box;
+        min-height: 21px;
+        margin-left: 5px;
+        padding: 3px 6px;
+        border-radius: 0;
+        border: 1px solid #aaa;
+        background: #f5f5f5;
+        color: #111;
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.2;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
+      .dl-status-ok { border-color: #228822; background: #e8f5e8; color: #145c14; }
+      .dl-status-warning { border-color: #d49a00; background: #fff5d6; color: #7a5600; }
+      .dl-status-error { border-color: #cc3333; background: #fde7e7; color: #992424; }
+      .dl-status-muted { border-color: #777; background: #eeeeee; color: #444; }
+      .dl-status-light { border-color: #b5b5b5; background: #f7f7f7; color: #777; }
+      .dl-status-info { border-color: #337ab7; background: #e8f2fb; color: #23527c; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function dlExtractRequestCode(text) {
+    const source = dlClean(text);
+    const requestCodeMatch = source.match(/\bRequest\s*Code\s*[:#-]?\s*([A-Z0-9]{6})\b/i);
+    if (requestCodeMatch) return requestCodeMatch[1].toUpperCase();
+    const dlUrlMatch = source.match(/(?:app\.decisionlogic\.com|DecisionLogic)\/([A-Z0-9]{6})\b/i);
+    if (dlUrlMatch) return dlUrlMatch[1].toUpperCase();
+    const candidates = source.match(/\b[A-Z0-9]{6}\b/g) || [];
+    for (const candidate of candidates) {
+      if (/^[A-Z0-9]{6}$/.test(candidate)) return candidate.toUpperCase();
+    }
+    return null;
+  }
+
+  function dlGetFollowUpText(row) {
+    const textCell = row.querySelector('.td1') || row.cells?.[0] || row;
+    return dlClean(textCell.textContent || '');
+  }
+
+  function dlGetActionRow(row) {
+    const actionTableRow = row.querySelector('.td2 table tr');
+    if (actionTableRow) return actionTableRow;
+    const td2 = row.querySelector('.td2');
+    if (td2) return td2;
+    return row;
+  }
+
+  function dlSetStatus(row, status, code) {
+    let pill = row.querySelector('.dl-followup-status-pill');
+    if (!pill) {
+      pill = document.createElement('span');
+      pill.className = 'dl-followup-status-pill dl-status-info';
+      const actionCell = row.querySelector('.dl-followup-action-cell');
+      if (actionCell) actionCell.appendChild(pill);
+      else row.appendChild(pill);
+    }
+    pill.className = `dl-followup-status-pill ${status.className || 'dl-status-info'}`;
+    pill.textContent = code ? `${code}: ${status.label}` : status.label;
+    pill.title = status.title || '';
+  }
+
+  function dlGetDetectedRows() {
+    return Array.from(document.querySelectorAll('.tr-followup'))
+      .map(row => {
+        const code = row.getAttribute(DL_CODE_ATTR) || dlExtractRequestCode(dlGetFollowUpText(row));
+        return code ? { row, code: code.toUpperCase() } : null;
+      })
+      .filter(Boolean);
+  }
+
+  function dlOpenCrp(code) {
+    window.open(CRP_REPORT_BASE_URL + encodeURIComponent(code), '_blank');
+  }
+
+  function dlAddOpenCrpButtonToRow(row, code) {
+    const currentCode = row.getAttribute(DL_CODE_ATTR);
+    if (row.getAttribute(DL_ROW_PROCESSED_ATTR) === '1' && currentCode === code) return;
+    row.setAttribute(DL_ROW_PROCESSED_ATTR, '1');
+    row.setAttribute(DL_CODE_ATTR, code);
+    const oldCell = row.querySelector('.dl-followup-action-cell');
+    if (oldCell) oldCell.remove();
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dl-followup-btn dl-followup-open-crp-btn';
+    button.textContent = 'Open in CRP';
+    button.title = `Open CRP report for ${code}`;
+    const actionCell = document.createElement('td');
+    actionCell.className = 'dl-followup-action-cell';
+    actionCell.appendChild(button);
+    const actionRow = dlGetActionRow(row);
+    if (/^tr$/i.test(actionRow.tagName || '')) actionRow.appendChild(actionCell);
+    else actionRow.appendChild(button);
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      dlOpenCrp(code);
+    });
+  }
+
+  function dlFindFollowUpsLabel() {
+    return document.getElementById('ctl00_FollowUpsLink') ||
+      Array.from(document.querySelectorAll('a, div, span, td, label, b, strong')).find(el =>
+        dlClean(el.textContent || '').startsWith('Follow-Ups')
+      );
+  }
+
+  function dlEnsureToolbar() {
+    const label = dlFindFollowUpsLabel();
+    if (!label) return null;
+    let toolbar = document.getElementById(DL_TOOLBAR_ID);
+    if (!toolbar) {
+      toolbar = document.createElement('div');
+      toolbar.id = DL_TOOLBAR_ID;
+      const checkAllButton = document.createElement('button');
+      checkAllButton.type = 'button';
+      checkAllButton.className = 'dl-followup-btn dl-followup-check-all-btn';
+      checkAllButton.textContent = 'Check DLs';
+      checkAllButton.title = 'Check all detected DecisionLogic follow-up request codes.';
+      toolbar.appendChild(checkAllButton);
+      const labelCell = label.closest('td');
+      if (labelCell) labelCell.appendChild(toolbar);
+      else label.insertAdjacentElement('afterend', toolbar);
+      checkAllButton.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await dlCheckAllDetectedCodes();
+      });
+    }
+    dlUpdateToolbarVisibility();
+    return toolbar;
+  }
+
+  function dlUpdateToolbarVisibility() {
+    const toolbar = document.getElementById(DL_TOOLBAR_ID);
+    if (!toolbar) return;
+    const rows = dlGetDetectedRows();
+    const uniqueCodes = new Set(rows.map(item => item.code));
+    toolbar.classList.toggle('dl-has-codes', uniqueCodes.size > 0);
+  }
+
+  function dlSetCheckAllButtonBusy(busy, label = null) {
+    const toolbar = document.getElementById(DL_TOOLBAR_ID);
+    const button = toolbar?.querySelector('.dl-followup-check-all-btn');
+    if (!button) return;
+    button.setAttribute('aria-disabled', busy ? 'true' : 'false');
+    button.textContent = label || (busy ? 'Loading...' : 'Check DLs');
+  }
+
+  async function dlCheckAllDetectedCodes() {
+    if (dlIsCheckingAll) return;
+    const items = dlGetDetectedRows();
+    if (!items.length) {
+      alert('No DecisionLogic request codes were detected in Follow-Ups.');
+      return;
+    }
+    const grouped = new Map();
+    for (const item of items) {
+      if (!grouped.has(item.code)) grouped.set(item.code, []);
+      grouped.get(item.code).push(item.row);
+    }
+    dlIsCheckingAll = true;
+    dlSetCheckAllButtonBusy(true, 'Loading...');
+    try {
+      for (const [code, rows] of grouped.entries()) {
+        dlSetCheckAllButtonBusy(true, 'Loading...');
+        rows.forEach(row => {
+          dlSetStatus(row, { label: 'Checking...', className: 'dl-status-info' }, code);
+        });
+        let result;
+        try {
+          result = await dlCheckDecisionLogicStatus(code);
+        } catch (error) {
+          result = {
+            loginNeeded: false,
+            status: {
+              label: 'Error',
+              className: 'dl-status-error',
+              title: error?.message || String(error || 'Unknown error')
+            }
+          };
+        }
+        if (result.loginNeeded) {
+          rows.forEach(row => {
+            dlSetStatus(row, {
+              label: 'Login needed',
+              className: 'dl-status-warning',
+              title: 'Please log in to DecisionLogic first.'
+            }, code);
+          });
+          alert('Please log in to DecisionLogic first, then click Check DLs again.');
+          window.open(DL_LOGIN_URL, '_blank');
+          break;
+        }
+        rows.forEach(row => {
+          dlSetStatus(row, result.status, code);
+        });
+      }
+    } finally {
+      dlIsCheckingAll = false;
+      dlSetCheckAllButtonBusy(false, 'Check DLs');
+    }
+  }
+
+  function dlScanFollowUps() {
+    if (!dlIsLmsCustomerPage()) return;
+    dlInjectStyles();
+    const rows = Array.from(document.querySelectorAll('.tr-followup'));
+    for (const row of rows) {
+      const text = dlGetFollowUpText(row);
+      const code = dlExtractRequestCode(text);
+      if (!code) continue;
+      dlAddOpenCrpButtonToRow(row, code);
+    }
+    dlEnsureToolbar();
+  }
+
+  function dlScheduleScan() {
+    if (dlScanTimer) clearTimeout(dlScanTimer);
+    dlScanTimer = setTimeout(() => {
+      dlScanTimer = null;
+      dlScanFollowUps();
+    }, 250);
+  }
+
+  function dlGmRequest(options) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        ...options,
+        timeout: options.timeout || 20000,
+        anonymous: false,
+        onload: resolve,
+        onerror: reject,
+        ontimeout: () => reject(new Error('DecisionLogic request timed out.'))
+      });
+    });
+  }
+
+  function dlParseHtml(html) {
+    return new DOMParser().parseFromString(String(html || ''), 'text/html');
+  }
+
+  function dlIsLoginResponse(response, doc) {
+    const finalUrl = response?.finalUrl || response?.responseURL || '';
+    if (/\/Login\.aspx/i.test(finalUrl)) return true;
+    if (doc.querySelector('input[type="password"]')) return true;
+    if (doc.querySelector('form[action*="Login.aspx" i]')) return true;
+    const title = dlClean(doc.title || '');
+    const bodyText = dlClean(doc.body?.textContent || '');
+    return /login/i.test(title) && /password/i.test(bodyText);
+  }
+
+  function dlBuildReportsPostPayload(doc, code) {
+    const form = doc.querySelector('form');
+    if (!form) throw new Error('DecisionLogic Reports form was not found.');
+    const params = new URLSearchParams();
+    form.querySelectorAll('input, select, textarea').forEach(element => {
+      const name = element.getAttribute('name');
+      if (!name) return;
+      const tag = (element.tagName || '').toLowerCase();
+      const type = (element.getAttribute('type') || '').toLowerCase();
+      if (type === 'submit' || type === 'button' || type === 'image' || type === 'file') return;
+      if ((type === 'checkbox' || type === 'radio') && !element.checked) return;
+      if (tag === 'select') {
+        const selected = Array.from(element.options || []).filter(option => option.selected);
+        if (element.multiple) selected.forEach(option => params.append(name, option.value));
+        else params.append(name, selected[0]?.value || element.value || '');
+        return;
+      }
+      params.append(name, element.value || '');
+    });
+    const requestInput =
+      form.querySelector('#ctl00_ctl00_MainContent_MainContent_tbRequestCode') ||
+      form.querySelector('input[name$="$tbRequestCode"]') ||
+      form.querySelector('input[id$="_tbRequestCode"]');
+    const requestName =
+      requestInput?.getAttribute('name') ||
+      'ctl00$ctl00$MainContent$MainContent$tbRequestCode';
+    params.set(requestName, code);
+    const updateButton =
+      form.querySelector('#ctl00_ctl00_MainContent_MainContent_btnUpdate') ||
+      form.querySelector('input[name$="$btnUpdate"]') ||
+      form.querySelector('input[id$="_btnUpdate"]');
+    const buttonName =
+      updateButton?.getAttribute('name') ||
+      'ctl00$ctl00$MainContent$MainContent$btnUpdate';
+    params.set(buttonName, updateButton?.getAttribute('value') || 'Update');
+    const action = form.getAttribute('action') || 'Reports.aspx';
+    const actionUrl = new URL(action, DL_REPORTS_URL).href;
+    return { actionUrl, body: params.toString() };
+  }
+
+  function dlNormalizeHexColor(color) {
+    const raw = dlClean(color).toUpperCase();
+    if (!raw) return '';
+    if (raw.startsWith('#')) {
+      if (/^#[0-9A-F]{3}$/i.test(raw)) {
+        return '#' + raw.slice(1).split('').map(ch => ch + ch).join('').toUpperCase();
+      }
+      return raw;
+    }
+    const rgbMatch = raw.match(/RGBA?\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+    if (rgbMatch) {
+      return '#' + [rgbMatch[1], rgbMatch[2], rgbMatch[3]].map(value => {
+        const n = Math.max(0, Math.min(255, Number(value) || 0));
+        return n.toString(16).padStart(2, '0').toUpperCase();
+      }).join('');
+    }
+    return raw;
+  }
+
+  function dlGetBackgroundColorFromStyle(element) {
+    const styleText = element.getAttribute('style') || '';
+    const inlineMatch = styleText.match(/background(?:-color)?\s*:\s*([^;]+)/i);
+    if (inlineMatch) return dlNormalizeHexColor(inlineMatch[1]);
+    return dlNormalizeHexColor(element.style?.backgroundColor || '');
+  }
+
+  function dlParseDecisionLogicStatus(html, code) {
+    const doc = dlParseHtml(html);
+    const links = Array.from(doc.querySelectorAll('a[id$="_hyRequestCode"], a[href*="requestCode="]'));
+    const reportLink = links.find(link => {
+      const linkText = dlClean(link.textContent).toUpperCase();
+      const href = link.getAttribute('href') || '';
+      return linkText === code.toUpperCase() ||
+        new RegExp(`requestCode=${code}\\b`, 'i').test(href);
+    });
+    if (!reportLink) {
+      return {
+        label: 'Not found',
+        className: 'dl-status-muted',
+        title: 'No matching DecisionLogic report was found.'
+      };
+    }
+    const row = reportLink.closest('tr');
+    if (!row) {
+      return {
+        label: 'Found, status unknown',
+        className: 'dl-status-info',
+        title: 'Report was found, but result row was not detected.'
+      };
+    }
+    const colorDivs = Array.from(row.querySelectorAll('div')).filter(div =>
+      /background/i.test(div.getAttribute('style') || '') ||
+      div.style?.backgroundColor
+    );
+    for (const div of colorDivs) {
+      const color = dlGetBackgroundColorFromStyle(div);
+      const mapped = DL_STATUS_BY_COLOR[color];
+      if (mapped) return { ...mapped, title: `DecisionLogic color: ${color}` };
+    }
+    return {
+      label: 'Found, status unknown',
+      className: 'dl-status-info',
+      title: 'Report was found, but status color was not recognized.'
+    };
+  }
+
+  async function dlCheckDecisionLogicStatus(code) {
+    const normalizedCode = String(code || '').toUpperCase();
+    if (dlResultCache.has(normalizedCode)) return dlResultCache.get(normalizedCode);
+    const reportsResponse = await dlGmRequest({
+      method: 'GET',
+      url: DL_REPORTS_URL,
+      headers: {
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    const reportsDoc = dlParseHtml(reportsResponse.responseText);
+    if (dlIsLoginResponse(reportsResponse, reportsDoc)) return { loginNeeded: true };
+    const post = dlBuildReportsPostPayload(reportsDoc, normalizedCode);
+    const searchResponse = await dlGmRequest({
+      method: 'POST',
+      url: post.actionUrl,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      },
+      data: post.body
+    });
+    const searchDoc = dlParseHtml(searchResponse.responseText);
+    if (dlIsLoginResponse(searchResponse, searchDoc)) return { loginNeeded: true };
+    const status = dlParseDecisionLogicStatus(searchResponse.responseText, normalizedCode);
+    const result = { loginNeeded: false, status };
+    dlResultCache.set(normalizedCode, result);
+    return result;
+  }
+
+  function dlBoot() {
+    if (!dlIsLmsCustomerPage()) return;
+    dlScanFollowUps();
+    setTimeout(dlScanFollowUps, 800);
+    setTimeout(dlScanFollowUps, 2000);
+    setTimeout(dlScanFollowUps, 4000);
+    const observer = new MutationObserver(dlScheduleScan);
+    observer.observe(document.documentElement || document.body, {
+      childList: true,
+      subtree: true
+    });
+    window.addEventListener('focus', dlScheduleScan);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', dlBoot);
+  } else {
+    dlBoot();
+  }
+})();
 
     /*** ============ Email/TXT Category Filter ============ ***/
 
@@ -1984,7 +2507,7 @@ const statusColumnSelector = '.DataTable.LoansTbl tbody tr td:nth-child(2)';
             percentageElement.textContent = ` (${percentage.toFixed(2)}%)`;
             percentageElement.classList.add('loan-comparison-tooltip');
 
-            if (percentage > 10) {
+            if (percentage > 20) {
                 if (payments < 3 && !status.includes("Paid in Full")) {
                     percentageElement.style.color = '#de9d1b';
                     percentageElement.title = "Not enough payments made for potential refinancing.";
