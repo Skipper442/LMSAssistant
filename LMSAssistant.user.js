@@ -2,7 +2,7 @@
 // @name         LMS Assistant PRO for Sales (GitHub)
 // @namespace    http://tampermonkey.net/
 // @author       Liam Moss and Jack Tyson
-// @version      2.38
+// @version      2.39
 // @description  LMS Assistant PRO with Sales-specific modules only
 // @icon         https://raw.githubusercontent.com/Skipper442/CC-icon/main/Credit-cube-logo.png
 // @match        https://apply.creditcube.com/*
@@ -29,12 +29,10 @@
     'use strict';
 
     // ===== Version Changelog Popup =====
-    const CURRENT_VERSION = "2.38";
+    const CURRENT_VERSION = "2.39";
 
 const changelog = [
-
-  "Added DL Follow-Up Status Checker — quick DecisionLogic status verification for LMS Follow-Ups",
-  "  • Thanks to PaulTL for the idea and implementation "
+  "North Carolina (NC) has been added to the list of unsupported states - you will see a warning pop-up"
 ];
 
 
@@ -725,7 +723,7 @@ if (MODULES.lmsAssistant) {
             }
 
             const custState = custCell.textContent.trim().substring(0, 2);
-            const unsupportedStates = ['GA', 'VA', 'PA', 'IL'];
+            const unsupportedStates = ['GA', 'VA', 'PA', 'NC', 'IL'];
             if (unsupportedStates.includes(custState)) {
                 showStyledPopup("Unsupported State", [`Customer from ${custState}. Reloan not allowed.`], true);
             }
